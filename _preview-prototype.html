@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vidyam · App Prototype (3 roles)</title>
+<style>
+  :root{
+    --bg:#0b0e23;--bg2:#11153a;--panel:#161a44;--panel2:#1d2255;--panel3:#232a63;
+    --line:#2a2f63;--txt:#e8e9ff;--muted:#9aa0d4;--muteder:#6b71a8;
+    --pri:#7c5cff;--pri2:#9b7bff;--accent:#34d1bf;--warn:#ffb454;--bad:#ff5c7c;--good:#4ade80;--info:#5aa9ff;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:radial-gradient(1200px 600px at 80% -10%,#1a1f55 0,transparent 60%),var(--bg);color:var(--txt);min-height:100vh}
+  .topbar{display:flex;align-items:center;gap:18px;padding:11px 22px;background:rgba(13,16,46,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+  .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--pri),var(--accent));display:grid;place-items:center;font-weight:800;color:#0b0e23}
+  .ta{color:var(--pri2);font-weight:600;font-size:15px}
+  .roleswitch{margin-left:auto;display:flex;gap:6px;background:var(--panel);padding:5px;border-radius:11px;border:1px solid var(--line)}
+  .roleswitch button{background:transparent;border:0;color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+  .roleswitch button.active{color:#fff}
+  .roleswitch button:hover{color:var(--txt)}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .shell{display:flex;min-height:calc(100vh - 58px)}
+  .side{width:225px;flex-shrink:0;background:rgba(17,21,58,.6);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:3px}
+  .who{display:flex;align-items:center;gap:11px;padding:11px;border-radius:12px;background:var(--panel);border:1px solid var(--line);margin-bottom:12px}
+  .avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;flex-shrink:0}
+  .who .nm{font-size:13.5px;font-weight:600}
+  .who .rl{font-size:11px;color:var(--muted)}
+  .nav a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:9px;color:var(--muted);font-size:13.5px;font-weight:500;cursor:pointer}
+  .nav a:hover{background:var(--panel);color:var(--txt)}
+  .nav a.on{background:linear-gradient(90deg,rgba(124,92,255,.28),transparent);color:#fff;border-left:3px solid var(--pri)}
+  .nav .ic{width:18px;text-align:center}
+  .ro-note{margin-top:auto;font-size:10px;color:var(--muteder);padding:10px 6px;line-height:1.5}
+  .main{flex:1;padding:24px 30px;overflow:auto}
+  .ph{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+  .ph h1{font-size:23px;font-weight:700}
+  .ph .sub{color:var(--muted);font-size:13px;margin-top:3px}
+  .pill{font-size:11px;padding:5px 12px;border-radius:20px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
+  .grid{display:grid;gap:15px}
+  .g4{grid-template-columns:repeat(4,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:17px;box-shadow:var(--shadow)}
+  .ct{font-size:14.5px;font-weight:700;margin-bottom:13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .stat .lbl{color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+  .stat .val{font-size:27px;font-weight:800;margin-top:7px}
+  .stat .delta{font-size:11.5px;margin-top:5px;font-weight:600}
+  .up{color:var(--good)}.down{color:var(--bad)}.flat{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;padding:9px 9px;border-bottom:1px solid var(--line)}
+  td{padding:10px 9px;border-bottom:1px solid rgba(42,47,99,.5)}
+  tr:last-child td{border-bottom:0}
+  .badge{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:700;display:inline-block}
+  .b-good{background:rgba(74,222,128,.15);color:var(--good)}
+  .b-warn{background:rgba(255,180,84,.15);color:var(--warn)}
+  .b-bad{background:rgba(255,92,124,.15);color:var(--bad)}
+  .b-pri{background:rgba(124,92,255,.2);color:var(--pri2)}
+  .b-info{background:rgba(90,169,255,.18);color:var(--info)}
+  .bar{height:8px;border-radius:6px;background:var(--panel2);overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--pri),var(--accent))}
+  .btn{background:linear-gradient(135deg,var(--pri),var(--pri2));border:0;color:#fff;padding:9px 16px;border-radius:9px;font-weight:600;font-size:13px;cursor:pointer}
+  .btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
+  .btn.sm{padding:6px 12px;font-size:12px}
+  .mini{font-size:12px;color:var(--muted)}
+  .subline{display:flex;align-items:center;gap:10px;margin:9px 0}
+  .subline .s-nm{width:90px;font-size:13px}.subline .s-mk{width:48px;text-align:right;font-weight:700;font-size:13px}
+  .ro{font-size:11px;color:var(--muted)}
+  /* calendar */
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
+  .cal .dow{font-size:11px;color:var(--muted);text-align:center;font-weight:600;padding:4px 0}
+  .cal .day{aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel2)}
+  .day.p{background:rgba(74,222,128,.16);color:var(--good);border-color:rgba(74,222,128,.4)}
+  .day.a{background:rgba(255,92,124,.16);color:var(--bad);border-color:rgba(255,92,124,.4)}
+  .day.h{background:var(--panel);color:var(--muteder)}
+  .day.e{background:transparent;border:0}
+  .day small{font-size:8px;font-weight:700;letter-spacing:.5px;margin-top:1px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .tab{padding:7px 15px;border-radius:9px;background:var(--panel);border:1px solid var(--line);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer}
+  .tab.on{background:linear-gradient(135deg,var(--pri),var(--pri2));color:#fff;border-color:transparent}
+  .msg{display:flex;gap:11px;padding:12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);margin-bottom:10px}
+  .msg .av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0;color:#fff}
+  .msg .body{flex:1}
+  .msg .from{font-size:13px;font-weight:700}
+  .msg .time{font-size:10.5px;color:var(--muteder)}
+  .msg .text{font-size:13px;color:var(--txt);margin-top:3px;line-height:1.45}
+  .compose{display:flex;gap:9px;margin-top:12px}
+  .compose input,.compose select,.compose textarea{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px 12px;font-size:13px;font-family:inherit}
+  input,select,textarea{outline:none}
+  .notice{background:linear-gradient(135deg,rgba(124,92,255,.14),transparent);border:1px solid rgba(124,92,255,.4);border-radius:12px;padding:11px 15px;font-size:12.5px;color:#cdbfff;margin-bottom:16px;display:flex;gap:9px}
+  .sugg{font-size:9px;background:var(--accent);color:#06251f;padding:2px 7px;border-radius:20px;font-weight:800}
+  .event{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid rgba(42,47,99,.5)}
+  .event .dt{width:50px;text-align:center;flex-shrink:0}
+  .event .dt .d{font-size:18px;font-weight:800;line-height:1}
+  .event .dt .m{font-size:10px;color:var(--muted);text-transform:uppercase}
+  .ttg{display:grid;grid-template-columns:70px repeat(6,1fr);gap:6px;font-size:11.5px}
+  .ttg .h{color:var(--muted);font-weight:600;padding:6px;text-align:center}
+  .ttg .c{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 5px;text-align:center}
+  .ttg .c b{font-size:11.5px}
+  .ttg .day{color:var(--muted);font-weight:600;padding:7px 4px;display:flex;align-items:center}
+  .att-cell{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px;display:flex;align-items:center;gap:9px;cursor:pointer}
+  .att-cell .nm{font-size:12.5px;font-weight:600}.att-cell .rn{font-size:10px;color:var(--muted)}
+  .pres{margin-left:auto;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800}
+  .p-yes{background:rgba(74,222,128,.2);color:var(--good)}.p-no{background:rgba(255,92,124,.2);color:var(--bad)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sq{width:12px;height:12px;border-radius:4px}
+  @media(max-width:900px){.g4{grid-template-columns:repeat(2,1fr)}.g3,.g2{grid-template-columns:1fr}.side{display:none}}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><div class="logo">வி</div> Vidyam <span class="ta">வித்யம்</span></div>
+  <div class="roleswitch" id="switch"></div>
+</div>
+<div class="shell">
+  <aside class="side">
+    <div class="who" id="who"></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="ro-note" id="ronote"></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<script>
+/* ============ data ============ */
+const SUBJECTS=["Tamil","English","Maths","Science","Social"];
+const EXAMS=[
+  {id:"mt1",name:"Mid Term 1"},
+  {id:"qt",name:"Quarterly"},
+  {id:"mt2",name:"Mid Term 2"},
+  {id:"hy",name:"Half-Yearly"},
+];
+// marks for student Aarav (8-A) per exam
+const MY_MARKS={mt1:[78,82,71,80,74],qt:[85,80,76,88,79],mt2:[88,84,82,90,80],hy:[92,85,88,90,81]};
+const CLASSES=["6-A","6-B","7-A","7-B","8-A","8-B","9-A","9-B","10-A","10-B","11-A","12-A"];
+
+let STUDENTS=[
+  {roll:12,name:"Aarav Anand",cls:"8-A",att:94,guardian:"Anand Kumar",phone:"98xxxxxx12",fee:"Paid"},
+  {roll:4,name:"Divya Meenakshi",cls:"8-A",att:98,guardian:"Meena R.",phone:"98xxxxxx04",fee:"Paid"},
+  {roll:7,name:"Priya Lakshmi",cls:"8-A",att:92,guardian:"Lakshmi S.",phone:"98xxxxxx07",fee:"Pending"},
+  {roll:19,name:"Karthik Raja",cls:"8-A",att:76,guardian:"Raja M.",phone:"98xxxxxx19",fee:"Partial"},
+  {roll:22,name:"Mohammed Irfan",cls:"8-A",att:61,guardian:"Irfan A.",phone:"98xxxxxx22",fee:"Pending"},
+  {roll:3,name:"Sneha Devi",cls:"8-A",att:95,guardian:"Devi K.",phone:"98xxxxxx03",fee:"Paid"},
+];
+// class-wise attendance for principal
+const CLASS_ATT={"6-A":94,"6-B":90,"7-A":88,"7-B":85,"8-A":92,"8-B":96,"9-A":83,"9-B":87,"10-A":90,"10-B":89,"11-A":91,"12-A":97};
+
+let MESSAGES={
+  // student page feed (from teacher/principal) + student's own posts
+  studentFeed:[
+    {from:"Principal Office",role:"principal",text:"Half-yearly report cards are now available. PTM on Sat 28 June, 10 AM.",time:"2 h ago",col:"#34d1bf"},
+    {from:"Mr. Saravanan (Class Teacher)",role:"teacher",text:"Aarav, please bring your science record book tomorrow.",time:"Yesterday",col:"#ffb454"},
+  ],
+  studentPosts:[
+    {from:"Aarav (Student)",role:"student",text:"Sir, I will be absent on Friday for a medical appointment.",time:"3 h ago",col:"#9b7bff"},
+  ],
+  // teacher inbox (direct from principal)
+  teacherInbox:[
+    {from:"Principal — Mrs. Lakshmi",role:"principal",text:"8-A maths average dropped this term. Can we discuss a plan? Why is the class not doing well?",time:"1 h ago",col:"#34d1bf",reply:null},
+  ],
+  // teacher broadcast (general, teachers only)
+  teacherGeneral:[
+    {from:"Principal Office",role:"principal",text:"Staff meeting Friday 4 PM in the conference room. Marks entry for Half-Yearly closes Thursday.",time:"4 h ago",col:"#34d1bf"},
+  ],
+};
+
+const EVENTS=[
+  {d:"28",m:"Jun",t:"Parent–Teacher Meeting",s:"10:00 AM · Main hall"},
+  {d:"02",m:"Jul",t:"Science Exhibition",s:"All day · Classes 6–10"},
+  {d:"05",m:"Jul",t:"Unit Test 2 begins",s:"Timetable on notice board"},
+  {d:"15",m:"Aug",t:"Independence Day",s:"Flag hoisting 8 AM"},
+];
+
+const TIMETABLE=[
+  ["Mon","Tamil","Maths","English","Science","Social","Computer"],
+  ["Tue","Science","Tamil","Maths","English","P.E.","Social"],
+  ["Wed","Maths","English","Tamil","Social","Science","Library"],
+  ["Thu","English","Science","Social","Maths","Tamil","Computer"],
+  ["Fri","Social","Maths","Science","Tamil","English","Games"],
+];
+
+const FEES={total:48000,paid:32000,terms:[
+  {term:"Term 1 — Tuition",due:16000,paid:16000,date:"12 Apr 2026"},
+  {term:"Term 1 — Transport",due:6000,paid:6000,date:"12 Apr 2026"},
+  {term:"Term 2 — Tuition",due:16000,paid:10000,date:"Partial"},
+  {term:"Term 2 — Transport",due:6000,paid:0,date:"Due 30 Jun"},
+  {term:"Exam & Lab fee",due:4000,paid:0,date:"Due 30 Jun"},
+]};
+
+/* ============ roles & nav ============ */
+const ROLES={
+  student:{name:"Aarav Anand",sub:"Class 8-A · Roll 12",color:"#9b7bff",label:"Student",
+    note:"Read-only access. Can view own records and post a message to teacher/parent.",
+    nav:[["dashboard","Dashboard","🏠"],["attendance","Attendance","🗓️"],["results","Exam Results","📊"],
+         ["timetable","Timetable","🕐"],["events","Events & News","📣"],["notes","Teacher Notes","📝"],
+         ["messages","Messages","💬"],["fees","Fees","💰"]]},
+  teacher:{name:"Mr. Saravanan K.",sub:"Class Teacher · 8-A",color:"#ffb454",label:"Teacher",
+    note:"Class teacher of 8-A. Also teaches Tamil to 9-A (cross-class subject access granted by admin).",
+    nav:[["dashboard","My Class","🏠"],["students","Students","🎓"],["results","Exam Results","📊"],
+         ["notes","Notes to Parent","📝"],["messages","Messages","💬"]]},
+  principal:{name:"Mrs. Lakshmi N.",sub:"Principal · Admin",color:"#34d1bf",label:"Principal / Admin",
+    note:"Full school oversight. Can broadcast to students & teachers, message individual teachers, and view fees.",
+    nav:[["dashboard","Dashboard","📊"],["attendance","Attendance","🗓️"],["students","Students","🎓"],
+         ["results","Exam Results","📋"],["messages","Messages","💬"],["fees","Fees Status","💰"]]},
+};
+
+let state={role:"student",view:"dashboard"};
+
+/* ============ helpers ============ */
+const $=id=>document.getElementById(id);
+function stat(l,v,d,dir,extra=""){return `<div class="card stat"><div class="lbl">${l}</div><div class="val">${v}</div><div class="delta ${dir}">${dir==='up'?'▲ ':dir==='down'?'▼ ':''}${d}</div>${extra}</div>`}
+function clsBar(n,p){return `<div class="subline"><div class="s-nm">${n}</div><div class="bar" style="flex:1"><i style="width:${p}%"></i></div><div class="s-mk">${p}%</div></div>`}
+function feeBadge(f){return f==="Paid"?'<span class="badge b-good">Paid</span>':f==="Pending"?'<span class="badge b-bad">Pending</span>':'<span class="badge b-warn">Partial</span>'}
+function go(v){state.view=v;render()}
+
+/* ============ shared screens ============ */
+function calendarHTML(absent){ // June 2026: starts Mon
+  const dows=["S","M","T","W","T","F","S"];
+  let html=dows.map(d=>`<div class="dow">${d}</div>`).join("");
+  // June 1 2026 is a Monday -> offset 1 (Sun=0)
+  const startOffset=1, daysInMonth=30;
+  for(let i=0;i<startOffset;i++) html+=`<div class="day e"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const dow=(startOffset+d-1)%7;
+    let cls="p",lab="P";
+    if(dow===0||dow===6){cls="h";lab="";}
+    else if(absent.includes(d)){cls="a";lab="A";}
+    if(d>23&&!(dow===0||dow===6)){cls="day";lab="";} // future days plain
+    html+=`<div class="day ${cls==='day'?'':cls}">${d}${lab?`<small>${lab}</small>`:''}</div>`;
+  }
+  return `<div class="cal">${html}</div>`;
+}
+
+/* ============ STUDENT ============ */
+const S={};
+S.dashboard=()=>`
+  <div class="ph"><div><h1>Hi, Aarav 👋</h1><div class="sub">Class 8-A · Roll 12 · read-only access</div></div>
+    <span class="pill">🟢 Tue, 23 Jun 2026</span></div>
+  <div class="grid g4">
+    ${stat("Attendance","94%","this term","up")}
+    ${stat("Latest exam","85%","Half-Yearly overall","up")}
+    ${stat("Fees","₹16,000","pending","down")}
+    ${stat("Next exam","Unit Test 2","in 12 days","flat")}
+  </div>
+  <div class="grid g2" style="margin-top:15px">
+    <div class="card"><div class="ct">Upcoming events <a class="mini" onclick="go('events')" style="cursor:pointer">View all ›</a></div>
+      ${EVENTS.slice(0,3).map(e=>`<div class="event"><div class="dt"><div class="d">${e.d}</div><div class="m">${e.m}</div></div><div><div style="font-weight:600;font-size:13px">${e.t}</div><div class="mini">${e.s}</div></div></div>`).join("")}</div>
+    <div class="card"><div class="ct">Latest from school 💬 <a class="mini" onclick="go('messages')" style="cursor:pointer">Open ›</a></div>
+      ${MESSAGES.studentFeed.map(m=>msgHTML(m)).join("")}</div>
+  </div>`;
+S.attendance=()=>`
+  <div class="ph"><div><h1>My Attendance</h1><div class="sub">Click any day. Calendar view — June 2026</div></div>
+    <span class="pill">Term total: 142 / 151 days · 94%</span></div>
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat("Present","142","days","up")}
+    ${stat("Absent","9","days","down")}
+    ${stat("Late","2","days","flat")}
+    ${stat("This month","21 / 23","June","up")}
+  </div>
+  <div class="card"><div class="ct">June 2026</div>
+    ${calendarHTML([5,12,19])}
+    <div class="legend">
+      <span><span class="sq" style="background:rgba(74,222,128,.4)"></span> Present</span>
+      <span><span class="sq" style="background:rgba(255,92,124,.4)"></span> Absent</span>
+      <span><span class="sq" style="background:var(--panel)"></span> Holiday / weekend</span>
+    </div></div>`;
+S.results=()=>{
+  const e=state._exam||"hy"; const marks=MY_MARKS[e];
+  const total=marks.reduce((a,b)=>a+b,0), pct=Math.round(total/SUBJECTS.length);
+  return `<div class="ph"><div><h1>Exam Results</h1><div class="sub">All exams · Academic Year 2025–26</div></div></div>
+  <div class="tabs">${EXAMS.map(x=>`<div class="tab ${x.id===e?'on':''}" onclick="state._exam='${x.id}';render()">${x.name}</div>`).join("")}</div>
+  <div class="grid g2"><div class="card"><div class="ct">${EXAMS.find(x=>x.id===e).name} — subject marks</div>
+    <table><thead><tr><th>Subject</th><th>Marks</th><th>/100</th><th>Grade</th></tr></thead><tbody>
+    ${SUBJECTS.map((s,i)=>{const m=marks[i];const g=m>=90?'A+':m>=80?'A':m>=70?'B':m>=60?'C':'D';return `<tr><td>${s}</td><td><b>${m}</b></td><td class="mini">100</td><td><span class="badge ${m>=80?'b-good':m>=60?'b-warn':'b-bad'}">${g}</span></td></tr>`}).join("")}
+    <tr><td><b>Total</b></td><td><b>${total}</b></td><td class="mini">500</td><td><span class="badge b-pri">${pct}%</span></td></tr>
+    </tbody></table></div>
+    <div class="card"><div class="ct">Performance</div>
+    ${SUBJECTS.map((s,i)=>`<div class="subline"><div class="s-nm">${s}</div><div class="bar" style="flex:1"><i style="width:${marks[i]}%"></i></div><div class="s-mk">${marks[i]}</div></div>`).join("")}
+    <div style="margin-top:14px;display:flex;gap:10px"><div class="card" style="flex:1;padding:12px;text-align:center"><div class="mini">Overall</div><div style="font-size:22px;font-weight:800;color:var(--good)">${pct}%</div></div>
+    <div class="card" style="flex:1;padding:12px;text-align:center"><div class="mini">Class rank</div><div style="font-size:22px;font-weight:800">6 / 42</div></div></div></div></div>`;
+};
+S.timetable=()=>`
+  <div class="ph"><div><h1>My Timetable</h1><div class="sub">Class 8-A · weekly</div></div></div>
+  <div class="card"><div class="ttg">
+    <div class="h">Day</div>${["P1","P2","P3","P4","P5","P6"].map(p=>`<div class="h">${p}</div>`).join("")}
+    ${TIMETABLE.map(r=>`<div class="day">${r[0]}</div>${r.slice(1).map(c=>`<div class="c"><b>${c}</b></div>`).join("")}`).join("")}
+  </div></div>`;
+S.events=()=>`
+  <div class="ph"><div><h1>Events & News</h1><div class="sub">Announcements from the school</div></div></div>
+  <div class="card">${EVENTS.map(e=>`<div class="event"><div class="dt"><div class="d">${e.d}</div><div class="m">${e.m}</div></div><div><div style="font-weight:600;font-size:14px">${e.t}</div><div class="mini">${e.s}</div></div></div>`).join("")}</div>`;
+S.notes=()=>`
+  <div class="ph"><div><h1>Teacher Notes</h1><div class="sub">Notes posted by your teachers</div></div></div>
+  <div class="card">${MESSAGES.studentFeed.filter(m=>m.role==='teacher').concat([{from:"Maths — Mrs. Geetha",text:"Revise chapters 4 & 5 for the unit test.",time:"2 d ago",col:"#7c5cff"}]).map(m=>msgHTML(m)).join("")}</div>`;
+S.messages=()=>`
+  <div class="ph"><div><h1>Messages</h1><div class="sub">From school · and your posts to teacher/parent (visible to teacher & principal)</div></div></div>
+  <div class="grid g2">
+    <div class="card"><div class="ct">📥 From school</div>${MESSAGES.studentFeed.map(m=>msgHTML(m)).join("")}</div>
+    <div class="card"><div class="ct">📤 My messages <span class="mini">seen by class teacher & principal</span></div>
+      ${MESSAGES.studentPosts.map(m=>msgHTML(m)).join("")}
+      <div class="compose"><input id="smsg" placeholder="Write a message to your teacher / parent…"><button class="btn" onclick="postStudentMsg()">Send</button></div>
+    </div></div>`;
+S.fees=()=>{
+  const pending=FEES.total-FEES.paid;
+  return `<div class="ph"><div><h1>Fees</h1><div class="sub">Academic Year 2025–26</div></div></div>
+  <div class="grid g3" style="margin-bottom:16px">
+    ${stat("Total fee","₹"+FEES.total.toLocaleString('en-IN'),"for the year","flat")}
+    ${stat("Paid","₹"+FEES.paid.toLocaleString('en-IN'),"received","up")}
+    ${stat("Pending","₹"+pending.toLocaleString('en-IN'),"due 30 Jun","down")}
+  </div>
+  <div class="card"><div class="ct">Breakdown</div>
+    <table><thead><tr><th>Item</th><th>Amount</th><th>Paid</th><th>Status</th><th>Date</th></tr></thead><tbody>
+    ${FEES.terms.map(t=>{const st=t.paid>=t.due?'Paid':t.paid>0?'Partial':'Pending';return `<tr><td>${t.term}</td><td>₹${t.due.toLocaleString('en-IN')}</td><td>₹${t.paid.toLocaleString('en-IN')}</td><td>${feeBadge(st)}</td><td class="mini">${t.date}</td></tr>`}).join("")}
+    </tbody></table></div>`;
+};
+
+/* ============ TEACHER ============ */
+const T={};
+T.dashboard=()=>`
+  <div class="ph"><div><h1>My Class — 8-A</h1><div class="sub">Mr. Saravanan K. · class teacher · Tue 23 Jun</div></div>
+    <span class="pill">38 students · 35 present</span></div>
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat("Present today","35","of 38","up")}
+    ${stat("Absent","3","Karthik, Irfan, +1","down")}
+    ${stat("Class attendance","92%","term avg","up")}
+    ${stat("Pending","Marks","Half-Yearly Tamil","flat")}
+  </div>
+  <div class="card"><div class="ct">Take attendance — 8-A <button class="btn sm" onclick="alert('Attendance saved for 8-A (prototype)')">Save</button></div>
+    <div class="grid g4" style="gap:9px">
+      ${STUDENTS.map((s,i)=>`<div class="att-cell" onclick="this.querySelector('.pres').classList.toggle('p-yes');this.querySelector('.pres').classList.toggle('p-no');var x=this.querySelector('.pres');x.textContent=x.classList.contains('p-yes')?'P':'A'">
+        <div><div class="nm">${s.name.split(' ')[0]} ${s.name.split(' ')[1]?.[0]||''}.</div><div class="rn">Roll ${s.roll}</div></div>
+        <div class="pres ${s.att<70?'p-no':'p-yes'}">${s.att<70?'A':'P'}</div></div>`).join("")}
+    </div><div class="mini" style="margin-top:10px">Tap a card to toggle present/absent.</div></div>`;
+T.students=()=>`
+  <div class="ph"><div><h1>Students</h1><div class="sub">View & edit all students · add new (saves to backend)</div></div>
+    <button class="btn" onclick="addStudent()">＋ Add student</button></div>
+  <div class="card"><table><thead><tr><th>Roll</th><th>Name</th><th>Class</th><th>Attendance</th><th>Guardian</th><th>Phone</th><th></th></tr></thead><tbody id="stbody">
+    ${STUDENTS.map(s=>`<tr><td>${s.roll}</td><td><b>${s.name}</b></td><td>${s.cls}</td><td>${s.att}%</td><td>${s.guardian}</td><td class="mini">${s.phone}</td><td><span class="mini" style="cursor:pointer;color:var(--pri2)" onclick="alert('Edit ${s.name} (prototype form)')">Edit ›</span></td></tr>`).join("")}
+  </tbody></table></div>`;
+T.results=()=>{
+  const mode=state._tmode||"create";
+  return `<div class="ph"><div><h1>Exam Results</h1><div class="sub">Create exams (class teacher) · enter marks for your subject</div></div></div>
+  <div class="tabs">
+    <div class="tab ${mode==='create'?'on':''}" onclick="state._tmode='create';render()">① Create exam (8-A)</div>
+    <div class="tab ${mode==='enter'?'on':''}" onclick="state._tmode='enter';render()">② Enter marks — Tamil · 9-A</div>
+  </div>
+  ${mode==='create'?`
+  <div class="notice">As 8-A class teacher you create the exam and its subjects. Admin then grants each subject teacher access to enter their subject's marks.</div>
+  <div class="grid g2"><div class="card"><div class="ct">New exam</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input class="compose" style="display:block;width:100%" value="Mid Term 1" id="exname">
+      <div class="mini">Subjects (each will be assigned to its teacher):</div>
+      ${SUBJECTS.map(s=>`<div style="display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 12px"><b style="font-size:13px;flex:1">${s}</b><span class="mini">teacher: ${s==='Tamil'?'Mr. Saravanan':s==='Maths'?'Mrs. Geetha':'— assign —'}</span></div>`).join("")}
+      <button class="btn" onclick="alert('Exam created. Admin can now grant subject access. (prototype)')">Create exam</button>
+    </div></div>
+    <div class="card"><div class="ct">Existing exams</div>
+      ${EXAMS.map(x=>`<div style="display:flex;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid rgba(42,47,99,.5)"><b style="flex:1;font-size:13px">${x.name}</b><span class="badge ${x.id==='hy'?'b-warn':'b-good'}">${x.id==='hy'?'marks open':'locked'}</span></div>`).join("")}
+    </div></div>`:`
+  <div class="notice">You teach <b>Tamil to 9-A</b> (cross-class access granted by admin). You can enter Tamil marks for 9-A only — not other subjects or classes.</div>
+  <div class="card"><div class="ct">Mid Term 1 · Tamil · Class 9-A <button class="btn sm" onclick="alert('Tamil marks saved for 9-A (prototype)')">Save marks</button></div>
+    <table><thead><tr><th>Roll</th><th>Student</th><th>Tamil / 100</th></tr></thead><tbody>
+    ${["Anitha R.","Bala S.","Charan V.","Deepa M.","Esakki P.","Fareed K."].map((n,i)=>`<tr><td>${i+1}</td><td>${n}</td><td><input style="width:80px;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:6px 9px" value="${70+i*3}"></td></tr>`).join("")}
+    </tbody></table></div>`}`;
+};
+T.notes=()=>`
+  <div class="ph"><div><h1>Notes to Parent / Student</h1><div class="sub">Your note appears on the student's page</div></div></div>
+  <div class="grid g2">
+    <div class="card"><div class="ct">Post a note</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <select class="compose" style="width:100%"><option>Aarav Anand (8-A)</option><option>Karthik Raja (8-A)</option><option>Whole class 8-A</option></select>
+        <textarea class="compose" style="width:100%;min-height:90px" id="tnote" placeholder="e.g. Please ensure homework is completed…"></textarea>
+        <button class="btn" onclick="postTeacherNote()">Post note</button>
+      </div></div>
+    <div class="card"><div class="ct">Recent notes</div>
+      ${MESSAGES.studentFeed.filter(m=>m.role==='teacher').map(m=>msgHTML(m)).join("")}</div>
+  </div>`;
+T.messages=()=>`
+  <div class="ph"><div><h1>Messages</h1><div class="sub">General notices & direct messages from the principal</div></div></div>
+  <div class="grid g2">
+    <div class="card"><div class="ct">📢 General (all teachers)</div>${MESSAGES.teacherGeneral.map(m=>msgHTML(m)).join("")}</div>
+    <div class="card"><div class="ct">📩 Direct from principal <span class="mini">private to you</span></div>
+      ${MESSAGES.teacherInbox.map((m,i)=>msgHTML(m)+(m.reply?`<div class="msg" style="margin-left:30px;background:var(--panel)"><div class="av" style="background:#ffb454">S</div><div class="body"><div class="from">You replied</div><div class="text">${m.reply}</div></div></div>`:`<div class="compose"><input id="treply${i}" placeholder="Reply to principal…"><button class="btn" onclick="replyPrincipal(${i})">Reply</button></div>`)).join("")}
+    </div></div>`;
+
+/* ============ PRINCIPAL ============ */
+const P={};
+P.dashboard=()=>`
+  <div class="ph"><div><h1>School Dashboard</h1><div class="sub">Vidyam Public School · AY 2025–26 · Tue 23 Jun</div></div>
+    <span class="pill">🟢 Live overview</span></div>
+  <div class="notice">💡 Items marked <span class="sugg">Suggested</span> are dashboard widgets I'm proposing — tell me which to keep.</div>
+  <div class="grid g4">
+    ${stat("Students","480","12 classes","flat")}
+    ${stat("Present today","441","91.8%","up")}
+    ${stat("Fees collected","68%","₹14.2L of ₹21L","up",'<span class="sugg" style="position:relative;top:6px">Suggested</span>')}
+    ${stat("Teachers","26","2 on leave","flat")}
+  </div>
+  <div class="grid g2" style="margin-top:15px">
+    <div class="card"><div class="ct">Attendance by class — today <a class="mini" onclick="go('attendance')" style="cursor:pointer">Full report ›</a></div>
+      ${["8-B","12-A","6-A","9-A"].map(c=>clsBar("Class "+c,CLASS_ATT[c])).join("")}</div>
+    <div class="card"><div class="ct">⚠️ Needs attention <span class="sugg">Suggested</span></div>
+      <div class="msg" style="background:rgba(255,92,124,.08)"><div class="av" style="background:#ff5c7c">!</div><div class="body"><div class="from">3 classes haven't submitted attendance</div><div class="text mini">7-A, 10-B, 11-A — pending today</div></div></div>
+      <div class="msg" style="background:rgba(255,180,84,.08)"><div class="av" style="background:#ffb454">₹</div><div class="body"><div class="from">38 students fee overdue</div><div class="text mini">Total pending ₹2.4L · due 30 Jun</div></div></div>
+      <div class="msg" style="background:rgba(90,169,255,.08)"><div class="av" style="background:#5aa9ff">📉</div><div class="body"><div class="from">5 students below 75% attendance</div><div class="text mini">Auto-flag for parent SMS</div></div></div>
+    </div></div>
+  <div class="grid g3" style="margin-top:15px">
+    <div class="card"><div class="ct">Latest exam <span class="sugg">Suggested</span></div><div style="font-size:13px">Half-Yearly pass rate</div><div style="font-size:30px;font-weight:800;color:var(--good);margin:6px 0">94%</div><div class="mini">Top: 12-A · Lowest: 9-A</div></div>
+    <div class="card"><div class="ct">New admissions <span class="sugg">Suggested</span></div><div style="font-size:30px;font-weight:800;margin:6px 0">+12</div><div class="mini">This month · YoY +8%</div></div>
+    <div class="card"><div class="ct">Quick actions</div><div style="display:flex;flex-direction:column;gap:8px"><button class="btn ghost sm" onclick="go('messages')">📢 Post announcement</button><button class="btn ghost sm" onclick="go('results')">📋 View exam results</button><button class="btn ghost sm" onclick="go('fees')">💰 Fees status</button></div></div>
+  </div>`;
+P.attendance=()=>`
+  <div class="ph"><div><h1>Attendance Report</h1><div class="sub">School overall + class-wise · today</div></div>
+    <span class="pill">School: 91.8%</span></div>
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat("Present","441","of 480","up")}
+    ${stat("Absent","39","8.2%","down")}
+    ${stat("Best class","12-A","97%","up")}
+    ${stat("Lowest class","9-A","83%","down")}
+  </div>
+  <div class="card"><div class="ct">Class-wise attendance</div>
+    <div class="grid g2" style="gap:4px 30px">${CLASSES.map(c=>clsBar("Class "+c,CLASS_ATT[c])).join("")}</div></div>`;
+P.students=()=>{
+  const cls=state._cls||"8-A";
+  const list=STUDENTS.map(s=>({...s,cls})); // demo: reuse
+  return `<div class="ph"><div><h1>Students</h1><div class="sub">Class-wise · open a student to get parent contact</div></div></div>
+  <div class="tabs">${CLASSES.slice(0,8).map(c=>`<div class="tab ${c===cls?'on':''}" onclick="state._cls='${c}';render()">${c}</div>`).join("")}</div>
+  <div class="card"><div class="ct">Class ${cls} <span class="mini">${list.length} students shown</span></div>
+    <table><thead><tr><th>Roll</th><th>Name</th><th>Attendance</th><th>Guardian</th><th>Phone</th><th>Fees</th></tr></thead><tbody>
+    ${list.map(s=>`<tr><td>${s.roll}</td><td><b>${s.name}</b></td><td>${s.att}%</td><td>${s.guardian}</td><td class="mini">${s.phone}</td><td>${feeBadge(s.fee)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+};
+P.results=()=>{
+  const e=state._exam||"hy";
+  return `<div class="ph"><div><h1>Exam Results</h1><div class="sub">Select an exam to view school-wide results</div></div></div>
+  <div class="tabs">${EXAMS.map(x=>`<div class="tab ${x.id===e?'on':''}" onclick="state._exam='${x.id}';render()">${x.name}</div>`).join("")}</div>
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat("Appeared","476","of 480","flat")}
+    ${stat("Pass rate","94%","+2% vs last","up")}
+    ${stat("School avg","78%","all subjects","up")}
+    ${stat("Distinctions","112","≥75%","up")}
+  </div>
+  <div class="card"><div class="ct">${EXAMS.find(x=>x.id===e).name} — class averages</div>
+    <table><thead><tr><th>Class</th><th>Avg %</th><th>Pass %</th><th>Top subject</th><th>Weakest</th></tr></thead><tbody>
+    ${["6-A","7-A","8-A","9-A","10-A","12-A"].map((c,i)=>`<tr><td><b>${c}</b></td><td>${82-i*2}%</td><td>${98-i}%</td><td>Science</td><td>${i%2?'Maths':'Social'}</td></tr>`).join("")}
+    </tbody></table></div>`;
+};
+P.messages=()=>{
+  const mode=state._pmode||"students";
+  return `<div class="ph"><div><h1>Messages</h1><div class="sub">Broadcast to students, broadcast to teachers, or message one teacher privately</div></div></div>
+  <div class="tabs">
+    <div class="tab ${mode==='students'?'on':''}" onclick="state._pmode='students';render()">📣 To students</div>
+    <div class="tab ${mode==='teachers'?'on':''}" onclick="state._pmode='teachers';render()">👩‍🏫 To all teachers</div>
+    <div class="tab ${mode==='direct'?'on':''}" onclick="state._pmode='direct';render()">📩 Direct to a teacher</div>
+  </div>
+  ${mode==='students'?`<div class="card"><div class="ct">Announcement → appears on every student's page</div>
+    <div class="compose"><input id="pstu" placeholder="e.g. School closed Monday for maintenance"><button class="btn" onclick="postPrincipal('students')">Publish</button></div>
+    <div style="margin-top:14px">${MESSAGES.studentFeed.filter(m=>m.role==='principal').map(m=>msgHTML(m)).join("")}</div></div>`:''}
+  ${mode==='teachers'?`<div class="card"><div class="ct">General message → all teachers only</div>
+    <div class="compose"><input id="ptea" placeholder="e.g. Staff meeting Friday 4 PM"><button class="btn" onclick="postPrincipal('teachers')">Send to all</button></div>
+    <div style="margin-top:14px">${MESSAGES.teacherGeneral.map(m=>msgHTML(m)).join("")}</div></div>`:''}
+  ${mode==='direct'?`<div class="notice">Private message to one teacher's inbox. They can reply — the thread stays between you two.</div>
+    <div class="card"><div class="ct">Direct message</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <select class="compose" style="width:100%"><option>Mr. Saravanan — 8-A class teacher</option><option>Mrs. Geetha — Maths</option><option>Ms. Rachel — English</option></select>
+      <textarea class="compose" style="width:100%;min-height:80px" id="pdir" placeholder="e.g. Why is 8-A maths average dropping?"></textarea>
+      <button class="btn" onclick="postPrincipal('direct')">Send privately</button>
+    </div>
+    <div style="margin-top:14px"><div class="ct">Sent</div>${MESSAGES.teacherInbox.map(m=>msgHTML({...m,from:'You → Mr. Saravanan'})+(m.reply?`<div class="msg" style="margin-left:30px;background:var(--panel)"><div class="av" style="background:#ffb454">S</div><div class="body"><div class="from">Mr. Saravanan replied</div><div class="text">${m.reply}</div></div></div>`:'<div class="mini" style="margin-left:30px">No reply yet</div>')).join("")}</div></div>`:''}`;
+};
+P.fees=()=>`
+  <div class="ph"><div><h1>Fees Status</h1><div class="sub">Collection overview · class-wise paid status</div></div></div>
+  <div class="grid g4" style="margin-bottom:16px">
+    ${stat("Target","₹21.0L","term","flat")}
+    ${stat("Collected","₹14.2L","68%","up")}
+    ${stat("Pending","₹6.8L","32%","down")}
+    ${stat("Defaulters","38","students","down")}
+  </div>
+  <div class="card"><div class="ct">Paid status — sample (Class 8-A)</div>
+    <table><thead><tr><th>Roll</th><th>Student</th><th>Guardian</th><th>Status</th><th>Phone</th></tr></thead><tbody>
+    ${STUDENTS.map(s=>`<tr><td>${s.roll}</td><td><b>${s.name}</b></td><td>${s.guardian}</td><td>${feeBadge(s.fee)}</td><td class="mini">${s.phone}</td></tr>`).join("")}
+    </tbody></table></div>`;
+
+/* ============ message render + actions ============ */
+function msgHTML(m){return `<div class="msg"><div class="av" style="background:${m.col||'#7c5cff'}">${m.from[0]}</div><div class="body"><div class="from">${m.from} <span class="time">· ${m.time||'now'}</span></div><div class="text">${m.text}</div></div></div>`}
+function postStudentMsg(){const v=$("smsg").value.trim();if(!v)return;MESSAGES.studentPosts.unshift({from:"Aarav (Student)",role:"student",text:v,time:"just now",col:"#9b7bff"});render()}
+function postTeacherNote(){const v=$("tnote").value.trim();if(!v)return;MESSAGES.studentFeed.unshift({from:"Mr. Saravanan (Class Teacher)",role:"teacher",text:v,time:"just now",col:"#ffb454"});alert("Note posted — now visible on the student's page.");render()}
+function replyPrincipal(i){const v=$("treply"+i).value.trim();if(!v)return;MESSAGES.teacherInbox[i].reply=v;render()}
+function postPrincipal(kind){
+  if(kind==='students'){const v=$("pstu").value.trim();if(!v)return;MESSAGES.studentFeed.unshift({from:"Principal Office",role:"principal",text:v,time:"just now",col:"#34d1bf"})}
+  if(kind==='teachers'){const v=$("ptea").value.trim();if(!v)return;MESSAGES.teacherGeneral.unshift({from:"Principal Office",role:"principal",text:v,time:"just now",col:"#34d1bf"})}
+  if(kind==='direct'){const v=$("pdir").value.trim();if(!v)return;MESSAGES.teacherInbox.unshift({from:"Principal — Mrs. Lakshmi",role:"principal",text:v,time:"just now",col:"#34d1bf",reply:null})}
+  alert("Message sent (prototype).");render();
+}
+function addStudent(){
+  const name=prompt("New student name:");if(!name)return;
+  const cls=prompt("Class (e.g. 8-A):","8-A")||"8-A";
+  STUDENTS.push({roll:STUDENTS.length+1,name,cls,att:100,guardian:"—",phone:"—",fee:"Pending"});
+  alert(name+" added — saved to backend (prototype).");render();
+}
+
+/* ============ router ============ */
+const SCREENS={student:S,teacher:T,principal:P};
+function render(){
+  const r=ROLES[state.role];
+  if(!r.nav.find(n=>n[0]===state.view)) state.view=r.nav[0][0];
+  $("who").innerHTML=`<div class="avatar" style="background:${r.color}">${r.name[0]}</div><div><div class="nm">${r.name}</div><div class="rl">${r.sub}</div></div>`;
+  $("nav").innerHTML=r.nav.map(([k,t,ic])=>`<a class="${k===state.view?'on':''}" onclick="go('${k}')"><span class="ic">${ic}</span>${t}</a>`).join("");
+  $("ronote").textContent=r.note;
+  $("main").innerHTML=SCREENS[state.role][state.view]();
+  [...document.querySelectorAll('#switch button')].forEach(b=>{b.classList.toggle('active',b.dataset.r===state.role);b.style.background=b.dataset.r===state.role?`linear-gradient(135deg,${ROLES[b.dataset.r].color},${ROLES[b.dataset.r].color})`:'transparent'});
+}
+const sw=$("switch");
+Object.entries(ROLES).forEach(([k,r])=>{const b=document.createElement("button");b.dataset.r=k;b.innerHTML=`<span class="dot" style="background:${r.color}"></span>${r.label}`;b.onclick=()=>{state.role=k;state.view=r.nav[0][0];render()};sw.appendChild(b)});
+render();
+</script>
+</body>
+</html>
