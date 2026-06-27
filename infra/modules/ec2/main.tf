@@ -1,8 +1,7 @@
-# EC2 app server module — builds & serves the UI from GitHub on boot.
-
-locals {
-  app_path = var.app_subdir == "" ? "/home/ubuntu/app" : "/home/ubuntu/app/${var.app_subdir}"
-}
+# EC2 app server module.
+# Startup script only BOOTSTRAPS the box (runtime + clone). The actual build &
+# serve steps are run manually via deploy.sh (see repo root). Automate later by
+# appending "bash /home/ubuntu/app/${var.app_subdir}/deploy.sh" to user_data.
 
 resource "aws_security_group" "ec2" {
   name        = "${var.project}-ec2-sg"
@@ -52,53 +51,32 @@ resource "aws_instance" "app" {
     volume_type = "gp3"
   }
 
+  # BOOTSTRAP ONLY: swap + runtime + clone. Deploy is run manually (deploy.sh).
   user_data = <<-EOF
     #!/bin/bash
     set -e
     exec > /var/log/user-data.log 2>&1
     export DEBIAN_FRONTEND=noninteractive
 
-    # 0) Swap so the Vite build doesn't OOM on a small instance
+    # Swap so the Vite build (run later via deploy.sh) won't OOM
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
     echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-    # 1) Runtime + tools
+    # Runtime + tools
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get update -y
     apt-get install -y nodejs nginx git
     npm install -g pm2
 
-    # 2) Get the UI code from GitHub
+    # Clone the repo (so deploy.sh is on the box) — but do NOT build/serve yet
     cd /home/ubuntu
     sudo -u ubuntu git clone -b ${var.github_branch} ${var.github_repo} app
+    chmod +x /home/ubuntu/app/deploy.sh || true
 
-    # 3) Install deps + build
-    cd ${local.app_path}
-    sudo -u ubuntu npm install
-    sudo -u ubuntu npm run build
-
-    # 4) Copy build into nginx web root (avoids /home permission issues)
-    rm -rf /var/www/html/*
-    cp -r ${local.app_path}/dist/* /var/www/html/
-
-    # 5) Nginx: SPA fallback + /api proxy for the backend later
-    cat > /etc/nginx/sites-available/default <<'NGINX'
-    server {
-        listen 80 default_server;
-        server_name _;
-        root /var/www/html;
-        index index.html;
-
-        location / { try_files $uri /index.html; }
-        location /api/ { proxy_pass http://127.0.0.1:4000/; }
-    }
-    NGINX
-
-    systemctl restart nginx
-    echo "DONE: UI built and served."
+    echo "BOOTSTRAP DONE. SSH in and run:  cd ~/app/${var.app_subdir} && ./deploy.sh"
   EOF
 
   tags = { Name = "${var.project}-app" }

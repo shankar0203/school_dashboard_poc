@@ -13,18 +13,7 @@ output "ec2_ssh" {
   value       = "ssh -i your-key.pem ubuntu@${module.ec2.public_ip}"
 }
 
-output "rds_endpoint" {
-  description = "RDS hostname — use in Workbench and the API .env"
-  value       = module.rds.endpoint
-}
-
-output "rds_port" {
-  value = module.rds.port
-}
-
-output "rds_database" {
-  value = module.rds.database
-}
+# RDS outputs deferred (module not provisioned yet).
 
 output "cognito_user_pool_id" {
   value = module.cognito.user_pool_id
