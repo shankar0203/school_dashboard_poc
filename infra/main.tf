@@ -50,21 +50,18 @@ module "ec2" {
   app_subdir    = var.app_subdir
 }
 
-# --- RDS (MySQL) — DEFERRED -----------------------------------------------
-# The rds module still lives in modules/rds/ but is not provisioned yet.
-# Re-enable later by uncommenting this block:
-#
-# module "rds" {
-#   source                = "./modules/rds"
-#   project               = var.project
-#   vpc_id                = data.aws_vpc.default.id
-#   subnet_ids            = data.aws_subnets.default.ids
-#   ec2_security_group_id = module.ec2.security_group_id
-#   my_ip_cidr            = var.my_ip_cidr
-#   db_instance_class     = var.db_instance_class
-#   db_username           = var.db_username
-#   db_password           = var.db_password
-# }
+# --- RDS (MySQL) -----------------------------------------------------------
+module "rds" {
+  source                = "./modules/rds"
+  project               = var.project
+  vpc_id                = data.aws_vpc.default.id
+  subnet_ids            = data.aws_subnets.default.ids
+  ec2_security_group_id = module.ec2.security_group_id
+  my_ip_cidr            = var.my_ip_cidr
+  db_instance_class     = var.db_instance_class
+  db_username           = var.db_username
+  db_password           = var.db_password
+}
 
 # --- Cognito (auth: user pool + 3 role groups) -----------------------------
 module "cognito" {

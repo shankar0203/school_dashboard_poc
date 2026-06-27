@@ -1,0 +1,12 @@
+# dependencies & build output
+node_modules/
+dist/
+
+# secrets / generated env (the single values file + backend env)
+config.values
+api/.env
+.env
+
+# OS junk
+.DS_Store
+**/.DS_Store

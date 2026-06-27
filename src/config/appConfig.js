@@ -6,7 +6,12 @@
 //
 //  👉 The product name is NOT finalised — just edit `app.name` (and optionally
 //     `app.logoInitial` / `app.nativeName`) below whenever you decide.
+//
+//  Environment endpoints (Cognito IDs, region, API URL) live in ./env.js,
+//  which is generated from the single `config.values` file via
+//  scripts/apply-config.sh.
 // ===========================================================================
+import env from "./env.js";
 
 export const config = {
   // -------------------------------------------------------------------------
@@ -54,15 +59,16 @@ export const config = {
   },
 
   // -------------------------------------------------------------------------
-  // COGNITO AUTH  — fill these from your `terraform apply` outputs:
-  //   userPoolId = cognito_user_pool_id
-  //   clientId   = cognito_client_id
-  //   region     = your aws_region
+  // COGNITO AUTH + API  — values come from ./env.js (the single values file).
+  // Don't edit here; edit config.values and run scripts/apply-config.sh.
   // -------------------------------------------------------------------------
   cognito: {
-    region: "us-east-1",
-    userPoolId: "us-east-1_XXXXXXXXX",
-    clientId: "XXXXXXXXXXXXXXXXXXXXXXXXXX",
+    region: env.region,
+    userPoolId: env.cognito.userPoolId,
+    clientId: env.cognito.clientId,
+  },
+  api: {
+    baseUrl: env.apiBaseUrl,
   },
 
   // -------------------------------------------------------------------------

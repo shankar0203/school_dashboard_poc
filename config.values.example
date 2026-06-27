@@ -1,0 +1,22 @@
+# ============================================================================
+#  ONE PLACE for all environment values.
+#  1) copy this file to  config.values   (it's gitignored — holds secrets)
+#  2) fill the values from:  terraform -chdir=infra output
+#  3) run:  bash scripts/apply-config.sh
+#     → it writes  src/config/env.js  (frontend)  and  api/.env  (backend)
+# ============================================================================
+
+# --- AWS / Cognito (frontend + backend) ---
+AWS_REGION=us-east-1
+COGNITO_USER_POOL_ID=          # terraform output cognito_user_pool_id
+COGNITO_CLIENT_ID=             # terraform output cognito_client_id
+
+# --- API base path the frontend calls ---
+API_BASE_URL=/api
+
+# --- RDS / database (backend only — used once the API is built) ---
+DB_HOST=                       # terraform output rds_endpoint
+DB_PORT=3306
+DB_NAME=school_app
+DB_USER=admin
+DB_PASSWORD=                   # the db_password you set in terraform.tfvars
