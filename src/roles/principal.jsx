@@ -78,7 +78,7 @@ function Students() {
   return (
     <>
       <PageHead title="Students" sub="Class-wise · open a student to get parent contact" />
-      <Tabs items={classes.slice(0, 8).map((c) => ({ id: c, name: c }))} value={cls} onChange={setCls} />
+      <Tabs items={classes.map((c) => ({ id: c, name: c }))} value={cls} onChange={setCls} />
       <Card title={<>Class {cls}</>}>
         <Loading state={list}>
           <table>
