@@ -2,6 +2,13 @@
 import React from "react";
 import config from "../config/appConfig.js";
 
+// Loading / error helper for API-backed sections.
+export const Loading = ({ state, children }) => {
+  if (state.loading) return <div className="mini" style={{ padding: 12 }}>Loading…</div>;
+  if (state.error) return <div className="mini" style={{ padding: 12, color: "var(--bad)" }}>Couldn’t load: {state.error.message}</div>;
+  return children;
+};
+
 export const Card = ({ title, action, children, className = "" }) => (
   <div className={`card ${className}`}>
     {title && <div className="ct">{title}{action}</div>}

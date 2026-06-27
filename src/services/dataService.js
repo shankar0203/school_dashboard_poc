@@ -1,67 +1,49 @@
 // ===========================================================================
-//  DATA SERVICE  —  the ONE place that talks to "the backend".
-//  Today it reads/writes the in-memory seed. To go live, replace each function
-//  body with a fetch() to your Express API — the rest of the app is untouched.
-//
-//  Example real swap:
-//    export const listStudents = (cls) =>
-//      fetch(`/api/students?class=${cls}`).then(r => r.json());
+//  DATA SERVICE — now backed by the real API (Express -> RDS).
+//  Every function returns a Promise. Screens load these via the useApi hook.
+//  A couple of static bits (timetable, demo persona) stay local for the POC.
 // ===========================================================================
+import { get, post } from "../lib/apiClient.js";
+import { demoUsers, timetable } from "../data/seed.js";
 
-import * as seed from "../data/seed.js";
+// For the POC the logged-in student persona maps to seeded student id 1 (Aarav).
+export const DEMO_STUDENT_ID = 1;
 
-export const getDemoUser = (role) => seed.demoUsers[role];
+// --- static (UI only) ----------------------------------------------------
+export const getDemoUser = (role) => demoUsers[role];
+export const getTimetable = () => timetable;
 
+// --- students ------------------------------------------------------------
 export const listStudents = (cls) =>
-  cls ? seed.students.map((s) => ({ ...s, cls })) : seed.students;
+  get("/students" + (cls ? `?class=${encodeURIComponent(cls)}` : ""));
+export const addStudent = (s) => post("/students", s);
 
-export const addStudent = ({ name, cls }) => {
-  seed.students.push({
-    roll: seed.students.length + 1,
-    name, cls, att: 100, guardian: "—", phone: "—", fee: "Pending",
-  });
-  return seed.students;
-};
+// --- attendance ----------------------------------------------------------
+export const getClassAttendance = () => get("/attendance/classwise");
+export const getStudentAttendance = (id) => get(`/attendance/student/${id}`);
 
-export const getMyMarks = (examId) => seed.myMarks[examId] || [];
-export const getClassAttendance = () => seed.classAttendance;
-export const getEvents = () => seed.events;
-export const getTimetable = () => seed.timetable;
-export const getFees = () => seed.fees;
+// --- exams + marks -------------------------------------------------------
+export const getExams = () => get("/exams");
+export const getMarks = (examId, studentId) =>
+  get(`/marks?examId=${examId}&studentId=${studentId}`);
 
-// ---- messaging ----------------------------------------------------------
-export const getMessages = () => seed.messages;
+// --- fees ----------------------------------------------------------------
+export const getFees = (studentId) => get(`/fees?studentId=${studentId}`);
 
-export const postStudentMessage = (text) => {
-  seed.messages.studentPosts.unshift({
-    from: "Aarav (Student)", role: "student", col: "#9b7bff", time: "just now", text,
-  });
-};
+// --- events --------------------------------------------------------------
+export const getEvents = () => get("/meta/events");
 
-export const postTeacherNote = (text) => {
-  seed.messages.studentFeed.unshift({
-    from: "Mr. Saravanan (Class Teacher)", role: "teacher", col: "#ffb454", time: "just now", text,
-  });
-};
-
-export const replyToPrincipal = (i, text) => {
-  if (seed.messages.teacherInbox[i]) seed.messages.teacherInbox[i].reply = text;
-};
-
-export const principalBroadcastStudents = (text) => {
-  seed.messages.studentFeed.unshift({
-    from: "Principal Office", role: "principal", col: "#34d1bf", time: "just now", text,
-  });
-};
-
-export const principalBroadcastTeachers = (text) => {
-  seed.messages.teacherGeneral.unshift({
-    from: "Principal Office", role: "principal", col: "#34d1bf", time: "just now", text,
-  });
-};
-
-export const principalDirectMessage = (text) => {
-  seed.messages.teacherInbox.unshift({
-    from: "Principal — Mrs. Lakshmi", role: "principal", col: "#34d1bf", time: "just now", reply: null, text,
-  });
-};
+// --- messages ------------------------------------------------------------
+export const getMessages = () => get("/messages");
+export const postStudentMessage = (text) =>
+  post("/messages", { audience: "student_post", senderRole: "student", text });
+export const postTeacherNote = (text) =>
+  post("/messages", { audience: "student_broadcast", senderRole: "teacher", text });
+export const replyToPrincipal = (id, text) =>
+  post(`/messages/${id}/reply`, { text, senderRole: "teacher" });
+export const principalBroadcastStudents = (text) =>
+  post("/messages", { audience: "student_broadcast", senderRole: "principal", text });
+export const principalBroadcastTeachers = (text) =>
+  post("/messages", { audience: "teacher_broadcast", senderRole: "principal", text });
+export const principalDirectMessage = (text) =>
+  post("/messages", { audience: "direct", senderRole: "principal", text });

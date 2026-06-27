@@ -1,37 +1,36 @@
-// STUDENT role screens (read-only, except posting a message).
+// STUDENT role screens — live data from the API (read-only, except posting).
 import React, { useState } from "react";
 import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
+import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
-import { Card, Stat, PageHead, Bar, Tabs, FeeBadge, Message, Calendar, money } from "../components/ui.jsx";
+import { Card, Stat, PageHead, Bar, Tabs, FeeBadge, Message, Calendar, Loading, money } from "../components/ui.jsx";
 
-const { subjects, exams, grade } = config.academics;
+const SID = api.DEMO_STUDENT_ID;
 
 function Dashboard() {
   const { setView } = useApp();
-  const events = api.getEvents();
-  const feed = api.getMessages().studentFeed;
+  const events = useApi(() => api.getEvents(), []);
+  const msgs = useApi(() => api.getMessages(), []);
   return (
     <>
       <PageHead title="Hi, Aarav 👋" sub="Class 8-A · Roll 12 · read-only access"
         right={<span className="pill">🟢 Tue, 23 Jun 2026</span>} />
-      <div className="grid g4">
-        <Stat label="Attendance" value="94%" delta="this term" dir="up" />
-        <Stat label="Latest exam" value="85%" delta="Half-Yearly overall" dir="up" />
-        <Stat label="Fees" value={money(16000)} delta="pending" dir="down" />
-        <Stat label="Next exam" value="Unit Test 2" delta="in 12 days" />
-      </div>
-      <div className="grid g2" style={{ marginTop: 15 }}>
+      <div className="grid g2" style={{ marginTop: 4 }}>
         <Card title={<>Upcoming events <a className="mini" style={{ cursor: "pointer" }} onClick={() => setView("events")}>View all ›</a></>}>
-          {events.slice(0, 3).map((e, i) => (
-            <div className="event" key={i}>
-              <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
-              <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.t}</div><div className="mini">{e.s}</div></div>
-            </div>
-          ))}
+          <Loading state={events}>
+            {(events.data || []).slice(0, 4).map((e, i) => (
+              <div className="event" key={i}>
+                <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
+                <div><div style={{ fontWeight: 600, fontSize: 13 }}>{e.t}</div><div className="mini">{e.s}</div></div>
+              </div>
+            ))}
+          </Loading>
         </Card>
         <Card title={<>Latest from school 💬 <a className="mini" style={{ cursor: "pointer" }} onClick={() => setView("messages")}>Open ›</a></>}>
-          {feed.map((m, i) => <Message m={m} key={i} />)}
+          <Loading state={msgs}>
+            {((msgs.data && msgs.data.studentFeed) || []).map((m, i) => <Message m={m} key={i} />)}
+          </Loading>
         </Card>
       </div>
     </>
@@ -39,63 +38,76 @@ function Dashboard() {
 }
 
 function Attendance() {
+  const att = useApi(() => api.getStudentAttendance(SID), []);
+  const rows = att.data || [];
+  const present = rows.filter((r) => r.status === "present").length;
+  const absent = rows.filter((r) => r.status === "absent").length;
+  const late = rows.filter((r) => r.status === "late").length;
+  const pct = rows.length ? Math.round((present / rows.length) * 100) : 0;
+  const absentDaysJune = rows
+    .filter((r) => r.status === "absent" && r.date.startsWith("2026-06"))
+    .map((r) => Number(r.date.slice(8, 10)));
   return (
     <>
       <PageHead title="My Attendance" sub="Calendar view — June 2026"
-        right={<span className="pill">Term total: 142 / 151 · 94%</span>} />
+        right={<span className="pill">Term: {pct}%</span>} />
       <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Stat label="Present" value="142" delta="days" dir="up" />
-        <Stat label="Absent" value="9" delta="days" dir="down" />
-        <Stat label="Late" value="2" delta="days" />
-        <Stat label="This month" value="21 / 23" delta="June" dir="up" />
+        <Stat label="Present" value={present} delta="days" dir="up" />
+        <Stat label="Absent" value={absent} delta="days" dir="down" />
+        <Stat label="Late" value={late} delta="days" />
+        <Stat label="Term %" value={pct + "%"} delta="overall" dir="up" />
       </div>
       <Card title="June 2026">
-        <Calendar absent={[5, 12, 19]} />
-        <div className="legend">
-          <span><span className="sq" style={{ background: "rgba(74,222,128,.4)" }} /> Present</span>
-          <span><span className="sq" style={{ background: "rgba(255,92,124,.4)" }} /> Absent</span>
-          <span><span className="sq" style={{ background: "var(--panel)" }} /> Holiday / weekend</span>
-        </div>
+        <Loading state={att}>
+          <Calendar absent={absentDaysJune} />
+          <div className="legend">
+            <span><span className="sq" style={{ background: "rgba(74,222,128,.4)" }} /> Present</span>
+            <span><span className="sq" style={{ background: "rgba(255,92,124,.4)" }} /> Absent</span>
+            <span><span className="sq" style={{ background: "var(--panel)" }} /> Holiday / weekend</span>
+          </div>
+        </Loading>
       </Card>
     </>
   );
 }
 
 function Results() {
-  const [exam, setExam] = useState("hy");
-  const marks = api.getMyMarks(exam);
-  const total = marks.reduce((a, b) => a + b, 0);
-  const pct = Math.round(total / subjects.length);
+  const exams = useApi(() => api.getExams(), []);
+  const [examId, setExamId] = useState(null);
+  const current = examId || (exams.data && exams.data.length ? exams.data[exams.data.length - 1].id : null);
+  const marks = useApi(() => (current ? api.getMarks(current, SID) : Promise.resolve([])), [current]);
+
+  const rows = marks.data || [];
+  const total = rows.reduce((a, r) => a + Number(r.mark), 0);
+  const pct = rows.length ? Math.round(total / rows.length) : 0;
   return (
     <>
       <PageHead title="Exam Results" sub={`All exams · Academic Year ${config.school.academicYear}`} />
-      <Tabs items={exams} value={exam} onChange={setExam} />
-      <div className="grid g2">
-        <Card title={`${exams.find((x) => x.id === exam).name} — subject marks`}>
-          <table>
-            <thead><tr><th>Subject</th><th>Marks</th><th>/100</th><th>Grade</th></tr></thead>
-            <tbody>
-              {subjects.map((s, i) => {
-                const m = marks[i];
-                const cls = m >= 80 ? "b-good" : m >= 60 ? "b-warn" : "b-bad";
-                return <tr key={s}><td>{s}</td><td><b>{m}</b></td><td className="mini">100</td><td><span className={`badge ${cls}`}>{grade(m)}</span></td></tr>;
-              })}
-              <tr><td><b>Total</b></td><td><b>{total}</b></td><td className="mini">500</td><td><span className="badge b-pri">{pct}%</span></td></tr>
-            </tbody>
-          </table>
-        </Card>
-        <Card title="Performance">
-          {subjects.map((s, i) => <Bar key={s} name={s} pct={marks[i]} />)}
-          <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-            <div className="card" style={{ flex: 1, padding: 12, textAlign: "center" }}>
-              <div className="mini">Overall</div><div style={{ fontSize: 22, fontWeight: 800, color: "var(--good)" }}>{pct}%</div>
-            </div>
-            <div className="card" style={{ flex: 1, padding: 12, textAlign: "center" }}>
-              <div className="mini">Class rank</div><div style={{ fontSize: 22, fontWeight: 800 }}>6 / 42</div>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <Loading state={exams}>
+        <Tabs items={(exams.data || []).map((e) => ({ id: e.id, name: e.name }))} value={current} onChange={setExamId} />
+        <div className="grid g2">
+          <Card title="Subject marks">
+            <Loading state={marks}>
+              <table>
+                <thead><tr><th>Subject</th><th>Marks</th><th>/100</th><th>Grade</th></tr></thead>
+                <tbody>
+                  {rows.map((r) => {
+                    const m = Number(r.mark);
+                    const cls = m >= 80 ? "b-good" : m >= 60 ? "b-warn" : "b-bad";
+                    return <tr key={r.subjectId}><td>{r.subject}</td><td><b>{m}</b></td><td className="mini">100</td><td><span className={`badge ${cls}`}>{config.academics.grade(m)}</span></td></tr>;
+                  })}
+                  <tr><td><b>Overall</b></td><td colSpan={2}></td><td><span className="badge b-pri">{pct}%</span></td></tr>
+                </tbody>
+              </table>
+            </Loading>
+          </Card>
+          <Card title="Performance">
+            <Loading state={marks}>
+              {rows.map((r) => <Bar key={r.subjectId} name={r.subject} pct={Number(r.mark)} />)}
+            </Loading>
+          </Card>
+        </div>
+      </Loading>
     </>
   );
 }
@@ -122,44 +134,48 @@ function Timetable() {
 }
 
 function Events() {
-  const events = api.getEvents();
+  const events = useApi(() => api.getEvents(), []);
   return (
     <>
       <PageHead title="Events & News" sub="Announcements from the school" />
       <Card>
-        {events.map((e, i) => (
-          <div className="event" key={i}>
-            <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
-            <div><div style={{ fontWeight: 600, fontSize: 14 }}>{e.t}</div><div className="mini">{e.s}</div></div>
-          </div>
-        ))}
+        <Loading state={events}>
+          {(events.data || []).map((e, i) => (
+            <div className="event" key={i}>
+              <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
+              <div><div style={{ fontWeight: 600, fontSize: 14 }}>{e.t}</div><div className="mini">{e.s}</div></div>
+            </div>
+          ))}
+        </Loading>
       </Card>
     </>
   );
 }
 
 function Notes() {
-  const notes = api.getMessages().studentFeed.filter((m) => m.role === "teacher");
+  const msgs = useApi(() => api.getMessages(), []);
+  const notes = ((msgs.data && msgs.data.studentFeed) || []).filter((m) => m.role === "teacher");
   return (
     <>
       <PageHead title="Teacher Notes" sub="Notes posted by your teachers" />
-      <Card>{notes.map((m, i) => <Message m={m} key={i} />)}</Card>
+      <Card><Loading state={msgs}>{notes.map((m, i) => <Message m={m} key={i} />)}</Loading></Card>
     </>
   );
 }
 
 function Messages() {
-  const { bump } = useApp();
   const [text, setText] = useState("");
-  const msgs = api.getMessages();
-  const send = () => { if (!text.trim()) return; api.postStudentMessage(text.trim()); setText(""); bump(); };
+  const msgs = useApi(() => api.getMessages(), []);
+  const send = async () => { if (!text.trim()) return; await api.postStudentMessage(text.trim()); setText(""); msgs.reload(); };
   return (
     <>
       <PageHead title="Messages" sub="From school · and your posts to teacher/parent (visible to teacher & principal)" />
       <div className="grid g2">
-        <Card title="📥 From school">{msgs.studentFeed.map((m, i) => <Message m={m} key={i} />)}</Card>
+        <Card title="📥 From school">
+          <Loading state={msgs}>{((msgs.data && msgs.data.studentFeed) || []).map((m, i) => <Message m={m} key={i} />)}</Loading>
+        </Card>
         <Card title={<>📤 My messages <span className="mini">seen by class teacher & principal</span></>}>
-          {msgs.studentPosts.map((m, i) => <Message m={m} key={i} />)}
+          <Loading state={msgs}>{((msgs.data && msgs.data.studentPosts) || []).map((m, i) => <Message m={m} key={i} />)}</Loading>
           <div className="compose">
             <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a message to your teacher / parent…" />
             <button className="btn" onClick={send}>Send</button>
@@ -171,7 +187,8 @@ function Messages() {
 }
 
 function Fees() {
-  const f = api.getFees();
+  const fees = useApi(() => api.getFees(SID), []);
+  const f = fees.data || { total: 0, paid: 0, terms: [] };
   const pending = f.total - f.paid;
   return (
     <>
@@ -179,18 +196,20 @@ function Fees() {
       <div className="grid g3" style={{ marginBottom: 16 }}>
         <Stat label="Total fee" value={money(f.total)} delta="for the year" />
         <Stat label="Paid" value={money(f.paid)} delta="received" dir="up" />
-        <Stat label="Pending" value={money(pending)} delta="due 30 Jun" dir="down" />
+        <Stat label="Pending" value={money(pending)} delta="due" dir="down" />
       </div>
       <Card title="Breakdown">
-        <table>
-          <thead><tr><th>Item</th><th>Amount</th><th>Paid</th><th>Status</th><th>Date</th></tr></thead>
-          <tbody>
-            {f.terms.map((t, i) => {
-              const st = t.paid >= t.due ? "Paid" : t.paid > 0 ? "Partial" : "Pending";
-              return <tr key={i}><td>{t.term}</td><td>{money(t.due)}</td><td>{money(t.paid)}</td><td><FeeBadge status={st} /></td><td className="mini">{t.date}</td></tr>;
-            })}
-          </tbody>
-        </table>
+        <Loading state={fees}>
+          <table>
+            <thead><tr><th>Item</th><th>Amount</th><th>Paid</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>
+              {f.terms.map((t, i) => {
+                const st = Number(t.paid) >= Number(t.due) ? "Paid" : Number(t.paid) > 0 ? "Partial" : "Pending";
+                return <tr key={i}><td>{t.term}</td><td>{money(t.due)}</td><td>{money(t.paid)}</td><td><FeeBadge status={st} /></td><td className="mini">{t.date}</td></tr>;
+              })}
+            </tbody>
+          </table>
+        </Loading>
       </Card>
     </>
   );
