@@ -54,6 +54,18 @@ export const config = {
   },
 
   // -------------------------------------------------------------------------
+  // COGNITO AUTH  — fill these from your `terraform apply` outputs:
+  //   userPoolId = cognito_user_pool_id
+  //   clientId   = cognito_client_id
+  //   region     = your aws_region
+  // -------------------------------------------------------------------------
+  cognito: {
+    region: "us-east-1",
+    userPoolId: "us-east-1_XXXXXXXXX",
+    clientId: "XXXXXXXXXXXXXXXXXXXXXXXXXX",
+  },
+
+  // -------------------------------------------------------------------------
   // ACADEMICS  (shared lists used across every role/screen)
   // -------------------------------------------------------------------------
   academics: {
