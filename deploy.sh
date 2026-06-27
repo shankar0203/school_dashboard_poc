@@ -25,7 +25,7 @@ echo "==> 3/4  Publish build to Nginx web root"
 sudo rm -rf /var/www/html/*
 sudo cp -r "$APP_DIR"/dist/* /var/www/html/
 
-echo "==> 4/4  Write Nginx config + restart"
+echo "==> 4/5  Write Nginx config + restart"
 sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX'
 server {
     listen 80 default_server;
@@ -38,5 +38,19 @@ server {
 }
 NGINX
 sudo nginx -t && sudo systemctl restart nginx
+
+echo "==> 5/5  Start/restart the API (Express on :4000 via pm2)"
+if [ -d "$APP_DIR/api" ]; then
+  if [ ! -f "$APP_DIR/api/.env" ]; then
+    echo "!! api/.env is missing — create it first (see api/.env.example). Skipping API."
+  else
+    cd "$APP_DIR/api"
+    npm install
+    pm2 restart school-api 2>/dev/null || pm2 start server.js --name school-api
+    pm2 save
+    cd "$APP_DIR"
+    echo "   API running. Check: curl -s http://localhost:4000/health"
+  fi
+fi
 
 echo "==> Done. Open  http://<EC2_PUBLIC_IP>"
