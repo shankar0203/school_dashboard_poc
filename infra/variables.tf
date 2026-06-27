@@ -53,11 +53,24 @@ variable "github_repo" {
 variable "github_branch" {
   description = "Branch to deploy"
   type        = string
-  default     = "main"
+  default     = "master"
 }
 
 variable "app_subdir" {
   description = "Subfolder inside the repo where package.json lives. Empty if it's at the repo root."
   type        = string
-  default     = ""
+  default     = "" # package.json is at the repo root
+}
+
+# --- Cognito ---------------------------------------------------------------
+variable "cognito_callback_urls" {
+  description = "Allowed sign-in redirect URLs (HTTPS only, except http://localhost)."
+  type        = list(string)
+  default     = ["http://localhost:5173"]
+}
+
+variable "cognito_logout_urls" {
+  description = "Allowed sign-out redirect URLs."
+  type        = list(string)
+  default     = ["http://localhost:5173"]
 }

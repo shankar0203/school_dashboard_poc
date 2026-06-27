@@ -1,15 +1,13 @@
 # Copy this file to  terraform.tfvars  and fill in your values.
 # (terraform.tfvars is gitignored — never commit real secrets.)
 
-aws_region = "ap-south-1"
+aws_region = "us-east-1"
 project    = "school-app"
 
 # An EC2 key pair that ALREADY EXISTS in the region above
-# (EC2 → Key Pairs → Create key pair, download the .pem).
 key_name = "my-keypair-name"
 
-# Your current public IP as a /32 CIDR. Find it: https://checkip.amazonaws.com
-# Example:
+# Your current public IP as a /32 CIDR — get it: https://checkip.amazonaws.com
 my_ip_cidr = "203.0.113.25/32"
 
 # RDS master credentials
@@ -17,8 +15,11 @@ db_username = "admin"
 db_password = "ChangeMe_Str0ngPassword"
 
 # UI source on GitHub — cloned & built automatically on the EC2 at boot.
-github_repo   = "https://github.com/your-username/school-app-poc.git"
-github_branch = "main"
-# If package.json is at the repo root, leave this empty.
-# If you pushed a parent folder and the app is in a subfolder, set it, e.g. "school-app-poc".
-app_subdir    = ""
+github_repo   = "https://github.com/your-username/your-repo.git"
+github_branch = "main"   # the branch with your code
+app_subdir    = ""       # empty: package.json is at the repo root
+
+# Cognito sign-in/out redirect URLs (HTTPS only, except http://localhost).
+# Add your real domain here once you have HTTPS.
+cognito_callback_urls = ["http://localhost:5173"]
+cognito_logout_urls   = ["http://localhost:5173"]
