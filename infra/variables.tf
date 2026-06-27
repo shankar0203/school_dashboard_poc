@@ -15,11 +15,6 @@ variable "key_name" {
   type        = string
 }
 
-variable "private_key_path" {
-  description = "Local path to the .pem matching key_name — used by the deploy provisioner to SSH in"
-  type        = string
-}
-
 variable "my_ip_cidr" {
   description = "Your public IP in CIDR form for SSH + Workbench access, e.g. 49.205.10.20/32"
   type        = string
