@@ -74,14 +74,19 @@ function Dashboard() {
             ? <div className="mini">No failures in the latest exam. 🎉</div>
             : (
               <table>
-                <thead><tr><th style={{ width: 60 }}>Roll</th><th>Student</th><th style={{ width: 120 }}>Failed subjects</th><th style={{ width: 90 }}>Average</th></tr></thead>
+                <thead><tr>
+                  <th style={{ width: 60 }}>Roll</th>
+                  <th>Student</th>
+                  <th style={{ width: 110, whiteSpace: "nowrap", textAlign: "center" }}>Failed</th>
+                  <th style={{ width: 90, textAlign: "right" }}>Average</th>
+                </tr></thead>
                 <tbody>
                   {attention.map((r) => (
                     <tr key={r.studentId}>
                       <td>{r.roll}</td>
                       <td><b>{r.name}</b></td>
-                      <td><span className="badge b-bad">{r.fails} failed</span></td>
-                      <td>{r.avg == null ? "—" : r.avg + "%"}</td>
+                      <td style={{ textAlign: "center" }}><span className="badge b-bad">{r.fails} failed</span></td>
+                      <td style={{ textAlign: "right" }}>{r.avg == null ? "—" : r.avg + "%"}</td>
                     </tr>
                   ))}
                 </tbody>

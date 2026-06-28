@@ -1,5 +1,5 @@
 output "ec2_public_ip" {
-  description = "Public IP of the app server"
+  description = "Elastic IP of the app server (point your domain's A record here)"
   value       = module.ec2.public_ip
 }
 

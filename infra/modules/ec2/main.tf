@@ -81,3 +81,10 @@ resource "aws_instance" "app" {
 
   tags = { Name = "${var.project}-app" }
 }
+
+# Stable public IP for the domain (survives instance rebuilds while the EIP lives)
+resource "aws_eip" "app" {
+  instance = aws_instance.app.id
+  domain   = "vpc"
+  tags     = { Name = "${var.project}-eip" }
+}

@@ -1,5 +1,5 @@
 output "public_ip" {
-  value = aws_instance.app.public_ip
+  value = aws_eip.app.public_ip
 }
 
 output "security_group_id" {
@@ -7,5 +7,5 @@ output "security_group_id" {
 }
 
 output "app_url" {
-  value = "http://${aws_instance.app.public_ip}"
+  value = "http://${aws_eip.app.public_ip}"
 }
