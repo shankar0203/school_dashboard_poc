@@ -77,7 +77,7 @@ function Dashboard() {
                 <thead><tr>
                   <th style={{ width: 60 }}>Roll</th>
                   <th>Student</th>
-                  <th style={{ width: 110, whiteSpace: "nowrap", textAlign: "center" }}>Failed</th>
+                  <th style={{ width: 130, whiteSpace: "nowrap", textAlign: "right" }}>Failed</th>
                   <th style={{ width: 90, textAlign: "right" }}>Average</th>
                 </tr></thead>
                 <tbody>
@@ -85,7 +85,7 @@ function Dashboard() {
                     <tr key={r.studentId}>
                       <td>{r.roll}</td>
                       <td><b>{r.name}</b></td>
-                      <td style={{ textAlign: "center" }}><span className="badge b-bad">{r.fails} failed</span></td>
+                      <td style={{ textAlign: "right" }}><span className="badge b-bad">{r.fails} failed</span></td>
                       <td style={{ textAlign: "right" }}>{r.avg == null ? "—" : r.avg + "%"}</td>
                     </tr>
                   ))}
