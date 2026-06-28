@@ -18,3 +18,4 @@ async function req(path, opts = {}) {
 
 export const get = (path) => req(path);
 export const post = (path, body) => req(path, { method: "POST", body: JSON.stringify(body || {}) });
+export const put = (path, body) => req(path, { method: "PUT", body: JSON.stringify(body || {}) });

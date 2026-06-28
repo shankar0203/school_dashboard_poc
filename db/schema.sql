@@ -86,15 +86,26 @@ CREATE TABLE subjects (
 -- students
 -- ---------------------------------------------------------------------------
 CREATE TABLE students (
-  id             INT AUTO_INCREMENT PRIMARY KEY,
-  school_id      INT NOT NULL,
-  class_id       INT NOT NULL,
-  roll_no        INT NOT NULL,
-  name           VARCHAR(120) NOT NULL,
-  guardian_name  VARCHAR(120),
-  guardian_phone VARCHAR(30),
-  user_id        INT,                          -- optional login (student/parent)
-  created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  id                INT AUTO_INCREMENT PRIMARY KEY,
+  school_id         INT NOT NULL,
+  class_id          INT NOT NULL,
+  roll_no           INT NOT NULL,
+  name              VARCHAR(120) NOT NULL,
+  admission_no      VARCHAR(30),
+  gender            ENUM('male','female','other'),
+  dob               DATE,
+  blood_group       VARCHAR(5),
+  student_phone     VARCHAR(30),
+  student_email     VARCHAR(150),
+  address           VARCHAR(255),
+  guardian_name     VARCHAR(120),
+  guardian_relation VARCHAR(30),                 -- Father / Mother / Guardian
+  guardian_phone    VARCHAR(30),
+  guardian_email    VARCHAR(150),
+  admission_date    DATE,
+  notes             VARCHAR(500),                -- medical / general notes
+  user_id           INT,                         -- optional login (student/parent)
+  created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_students_school FOREIGN KEY (school_id) REFERENCES schools(id),
   CONSTRAINT fk_students_class  FOREIGN KEY (class_id)  REFERENCES classes(id),
   CONSTRAINT fk_students_user   FOREIGN KEY (user_id)   REFERENCES users(id),

@@ -2,8 +2,16 @@ const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
 
+// columns a client may set on create/update
+const FIELDS = [
+  "name", "admission_no", "gender", "dob", "blood_group",
+  "student_phone", "student_email", "address",
+  "guardian_name", "guardian_relation", "guardian_phone", "guardian_email",
+  "admission_date", "notes",
+];
+
 // GET /students            -> all students (school)
-// GET /students?class=8-A  -> students in a class (by class name)
+// GET /students?class=8-A  -> students in a class (by name)
 // GET /students?classId=5  -> students in a class (by id)
 router.get("/", h(async (req, res) => {
   const where = ["s.school_id = ?"];
@@ -13,7 +21,7 @@ router.get("/", h(async (req, res) => {
 
   const [rows] = await db.query(
     `SELECT s.id, s.roll_no AS roll, s.name, c.name AS cls,
-            s.guardian_name AS guardian, s.guardian_phone AS phone,
+            s.gender, s.guardian_name AS guardian, s.guardian_phone AS phone,
             ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS att,
             CASE
               WHEN COALESCE(f.due,0) = 0 THEN 'Paid'
@@ -34,29 +42,76 @@ router.get("/", h(async (req, res) => {
   res.json(rows);
 }));
 
-// POST /students  { name, class | classId, guardian?, phone? }
-router.post("/", h(async (req, res) => {
-  const { name, cls, classId, guardian, phone } = req.body;
-  let cid = classId;
-  if (!cid && cls) {
-    const [[c]] = await db.query(
-      "SELECT id FROM classes WHERE school_id = ? AND name = ?",
-      [req.schoolId, cls]
-    );
-    cid = c && c.id;
-  }
-  if (!cid) return res.status(400).json({ error: "class or classId required" });
+// GET /students/:id  -> full profile (all fields + class name + attendance% + fee summary)
+router.get("/:id", h(async (req, res) => {
+  const [[s]] = await db.query(
+    `SELECT s.*, c.name AS class_name,
+            ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS attendance_pct
+     FROM students s
+     JOIN classes c ON c.id = s.class_id
+     LEFT JOIN attendance a ON a.student_id = s.id
+     WHERE s.id = ? AND s.school_id = ?
+     GROUP BY s.id`,
+    [req.params.id, req.schoolId]
+  );
+  if (!s) return res.status(404).json({ error: "student not found" });
 
-  const [[mx]] = await db.query(
-    "SELECT COALESCE(MAX(roll_no),0)+1 AS n FROM students WHERE class_id = ?",
-    [cid]
+  const [[f]] = await db.query(
+    "SELECT COALESCE(SUM(amount_due),0) due, COALESCE(SUM(amount_paid),0) paid FROM fees WHERE student_id = ?",
+    [req.params.id]
   );
-  const [r] = await db.query(
-    `INSERT INTO students (school_id, class_id, roll_no, name, guardian_name, guardian_phone)
-     VALUES (?,?,?,?,?,?)`,
-    [req.schoolId, cid, mx.n, name, guardian || "—", phone || "—"]
-  );
-  res.json({ id: r.insertId, roll: mx.n });
+  s.fees = { total: Number(f.due), paid: Number(f.paid), pending: Number(f.due) - Number(f.paid) };
+  res.json(s);
+}));
+
+// helper: resolve a class name to an id (within this school)
+async function classId(schoolId, cls, classIdRaw) {
+  if (classIdRaw) return classIdRaw;
+  if (!cls) return null;
+  const [[c]] = await db.query("SELECT id FROM classes WHERE school_id = ? AND name = ?", [schoolId, cls]);
+  return c && c.id;
+}
+
+// POST /students  { name, class|classId, roll?, + any FIELDS }
+router.post("/", h(async (req, res) => {
+  const cid = await classId(req.schoolId, req.body.cls || req.body.class, req.body.classId);
+  if (!cid) return res.status(400).json({ error: "class or classId required" });
+  if (!req.body.name) return res.status(400).json({ error: "name required" });
+
+  let roll = req.body.roll;
+  if (!roll) {
+    const [[mx]] = await db.query("SELECT COALESCE(MAX(roll_no),0)+1 AS n FROM students WHERE class_id = ?", [cid]);
+    roll = mx.n;
+  }
+
+  const cols = ["school_id", "class_id", "roll_no"];
+  const vals = [req.schoolId, cid, roll];
+  FIELDS.forEach((f) => {
+    if (req.body[f] !== undefined && req.body[f] !== "") { cols.push(f); vals.push(req.body[f]); }
+  });
+  const placeholders = cols.map(() => "?").join(",");
+  const [r] = await db.query(`INSERT INTO students (${cols.join(",")}) VALUES (${placeholders})`, vals);
+  res.json({ id: r.insertId, roll });
+}));
+
+// PUT /students/:id  -> update any provided FIELDS (+ class / roll)
+router.put("/:id", h(async (req, res) => {
+  const sets = [];
+  const vals = [];
+
+  if (req.body.cls || req.body.class || req.body.classId) {
+    const cid = await classId(req.schoolId, req.body.cls || req.body.class, req.body.classId);
+    if (cid) { sets.push("class_id = ?"); vals.push(cid); }
+  }
+  if (req.body.roll !== undefined && req.body.roll !== "") { sets.push("roll_no = ?"); vals.push(req.body.roll); }
+  FIELDS.forEach((f) => {
+    if (req.body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(req.body[f] === "" ? null : req.body[f]); }
+  });
+  if (!sets.length) return res.status(400).json({ error: "nothing to update" });
+
+  vals.push(req.params.id, req.schoolId);
+  await db.query(`UPDATE students SET ${sets.join(", ")} WHERE id = ? AND school_id = ?`, vals);
+  res.json({ ok: true });
 }));
 
 module.exports = router;

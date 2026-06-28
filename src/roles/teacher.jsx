@@ -5,8 +5,10 @@ import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
 import { Card, Stat, PageHead, Tabs, Message, Loading } from "../components/ui.jsx";
+import StudentForm from "../components/StudentForm.jsx";
+import StudentProfile from "../components/StudentProfile.jsx";
 
-const { subjects } = config.academics;
+const { subjects, classes } = config.academics;
 const MY_CLASS = "8-A";
 
 function Dashboard() {
@@ -50,33 +52,51 @@ function Dashboard() {
 
 function Students() {
   const list = useApi(() => api.listStudents(MY_CLASS), []);
-  const add = async () => {
-    const name = prompt("New student name:");
-    if (!name) return;
-    const cls = prompt("Class (e.g. 8-A):", MY_CLASS) || MY_CLASS;
-    await api.addStudent({ name, cls });
-    alert(`${name} added — saved to the database.`);
-    list.reload();
-  };
+  const [form, setForm] = useState(null);      // {student} | {student:null} when open
+  const [profileId, setProfileId] = useState(null);
+  const done = () => { setForm(null); list.reload(); };
   return (
     <>
-      <PageHead title="Students" sub="View & add students (saved to the database)"
-        right={<button className="btn" onClick={add}>＋ Add student</button>} />
+      <PageHead title="Students" sub="View, add & edit your class (saved to the database)"
+        right={<button className="btn" onClick={() => setForm({ student: null })}>＋ Add student</button>} />
       <Card>
         <Loading state={list}>
           <table>
-            <thead><tr><th>Roll</th><th>Name</th><th>Class</th><th>Attendance</th><th>Guardian</th><th>Phone</th></tr></thead>
+            <thead><tr><th>Roll</th><th>Name</th><th>Class</th><th>Attendance</th><th>Guardian</th><th>Phone</th><th></th></tr></thead>
             <tbody>
               {(list.data || []).map((s) => (
                 <tr key={s.id}>
-                  <td>{s.roll}</td><td><b>{s.name}</b></td><td>{s.cls}</td><td>{s.att}%</td>
-                  <td>{s.guardian}</td><td className="mini">{s.phone}</td>
+                  <td>{s.roll}</td>
+                  <td><b style={{ cursor: "pointer" }} onClick={() => setProfileId(s.id)}>{s.name}</b></td>
+                  <td>{s.cls}</td><td>{s.att}%</td><td>{s.guardian}</td><td className="mini">{s.phone}</td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <span className="mini link" onClick={() => setProfileId(s.id)}>View</span>
+                    {" · "}
+                    <span className="mini link" onClick={() => setForm({ student: s })}>Edit</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Loading>
       </Card>
+
+      {form && (
+        <StudentForm
+          student={form.student}
+          classes={classes}
+          lockedClass={MY_CLASS}
+          onClose={() => setForm(null)}
+          onSaved={done}
+        />
+      )}
+      {profileId && (
+        <StudentProfile
+          id={profileId}
+          onClose={() => setProfileId(null)}
+          onEdit={(s) => { setProfileId(null); setForm({ student: s }); }}
+        />
+      )}
     </>
   );
 }

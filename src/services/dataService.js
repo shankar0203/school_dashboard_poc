@@ -3,7 +3,7 @@
 //  Every function returns a Promise. Screens load these via the useApi hook.
 //  A couple of static bits (timetable, demo persona) stay local for the POC.
 // ===========================================================================
-import { get, post } from "../lib/apiClient.js";
+import { get, post, put } from "../lib/apiClient.js";
 import { demoUsers, timetable } from "../data/seed.js";
 
 // For the POC the logged-in student persona maps to seeded student id 1 (Aarav).
@@ -16,7 +16,9 @@ export const getTimetable = () => timetable;
 // --- students ------------------------------------------------------------
 export const listStudents = (cls) =>
   get("/students" + (cls ? `?class=${encodeURIComponent(cls)}` : ""));
+export const getStudent = (id) => get(`/students/${id}`);
 export const addStudent = (s) => post("/students", s);
+export const updateStudent = (id, s) => put(`/students/${id}`, s);
 
 // --- attendance ----------------------------------------------------------
 export const getClassAttendance = () => get("/attendance/classwise");
