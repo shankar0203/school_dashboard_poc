@@ -37,17 +37,3 @@ output "cognito_client_id" {
 output "cognito_hosted_ui_domain" {
   value = module.cognito.hosted_ui_domain
 }
-
-output "route53_nameservers" {
-  description = "Set these as your domain's nameservers in GoDaddy"
-  value       = aws_route53_zone.main.name_servers
-}
-
-output "alb_dns_name" {
-  description = "The load balancer hostname (the domain aliases to this)"
-  value       = aws_lb.app.dns_name
-}
-
-output "site_url" {
-  value = "https://${var.domain_name}"
-}
