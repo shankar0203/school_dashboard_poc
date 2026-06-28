@@ -20,6 +20,12 @@ variable "my_ip_cidr" {
   type        = string
 }
 
+variable "domain_name" {
+  description = "Your domain, e.g. trackya.in (managed via Route 53)"
+  type        = string
+  default     = "trackya.in"
+}
+
 variable "instance_type" {
   description = "EC2 instance size"
   type        = string

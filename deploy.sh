@@ -14,18 +14,21 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
 echo "==> Deploying from: $APP_DIR"
 
-echo "==> 1/4  Pull latest code"
+echo "==> 1/5  Pull latest code"
 git pull || echo "(skipping git pull)"
 
-echo "==> 2/4  Install dependencies + build"
+echo "==> 2/5  Regenerate config from SSM (Cognito + RDS)"
+bash "$APP_DIR/scripts/gen-config-from-ssm.sh" || echo "(SSM config skipped — check IAM role / awscli)"
+
+echo "==> 3/6  Install dependencies + build"
 npm install
 npm run build
 
-echo "==> 3/4  Publish build to Nginx web root"
+echo "==> 4/6  Publish build to Nginx web root"
 sudo rm -rf /var/www/html/*
 sudo cp -r "$APP_DIR"/dist/* /var/www/html/
 
-echo "==> 4/5  Write Nginx config + restart"
+echo "==> 5/6  Write Nginx config + restart"
 sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX'
 server {
     listen 80 default_server;
@@ -39,7 +42,7 @@ server {
 NGINX
 sudo nginx -t && sudo systemctl restart nginx
 
-echo "==> 5/5  Start/restart the API (Express on :4000 via pm2)"
+echo "==> 6/6  Start/restart the API (Express on :4000 via pm2)"
 if [ -d "$APP_DIR/api" ]; then
   if [ ! -f "$APP_DIR/api/.env" ]; then
     echo "!! api/.env is missing — create it first (see api/.env.example). Skipping API."

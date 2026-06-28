@@ -35,19 +35,30 @@ data "aws_ssm_parameter" "ubuntu" {
   name = "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
 }
 
-# --- EC2 (app server) ------------------------------------------------------
+# --- EC2 (app server) — depends on SSM config existing first ----------------
 module "ec2" {
-  source        = "./modules/ec2"
-  project       = var.project
-  vpc_id        = data.aws_vpc.default.id
-  subnet_id     = data.aws_subnets.default.ids[0]
-  ami_id        = data.aws_ssm_parameter.ubuntu.value
-  instance_type = var.instance_type
-  key_name      = var.key_name
-  my_ip_cidr    = var.my_ip_cidr
-  github_repo   = var.github_repo
-  github_branch = var.github_branch
-  app_subdir    = var.app_subdir
+  source               = "./modules/ec2"
+  project              = var.project
+  subnet_id            = data.aws_subnets.default.ids[0]
+  ami_id               = data.aws_ssm_parameter.ubuntu.value
+  instance_type        = var.instance_type
+  key_name             = var.key_name
+  security_group_id    = aws_security_group.ec2.id
+  iam_instance_profile = aws_iam_instance_profile.ec2.name
+  region               = var.aws_region
+  ssm_prefix           = var.ssm_prefix
+  github_repo          = var.github_repo
+  github_branch        = var.github_branch
+  app_subdir           = var.app_subdir
+
+  depends_on = [
+    aws_ssm_parameter.cognito_pool,
+    aws_ssm_parameter.cognito_client,
+    aws_ssm_parameter.rds_host,
+    aws_ssm_parameter.db_name,
+    aws_ssm_parameter.db_user,
+    aws_ssm_parameter.db_password,
+  ]
 }
 
 # --- RDS (MySQL) -----------------------------------------------------------
@@ -56,7 +67,7 @@ module "rds" {
   project               = var.project
   vpc_id                = data.aws_vpc.default.id
   subnet_ids            = data.aws_subnets.default.ids
-  ec2_security_group_id = module.ec2.security_group_id
+  ec2_security_group_id = aws_security_group.ec2.id
   my_ip_cidr            = var.my_ip_cidr
   db_instance_class     = var.db_instance_class
   db_username           = var.db_username
