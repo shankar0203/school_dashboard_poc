@@ -89,3 +89,39 @@ export const Calendar = ({ absent = [] }) => {
 
 export const money = (n) =>
   config.app.currency + Number(n).toLocaleString(config.app.locale);
+
+// Donut chart (CSS conic-gradient, no dependencies).
+// segments: [{ label, value, color }]
+export const Donut = ({ segments = [], size = 130, centerLabel, centerSub }) => {
+  const total = segments.reduce((a, s) => a + s.value, 0) || 1;
+  let acc = 0;
+  const stops = segments.map((s) => {
+    const start = (acc / total) * 360;
+    acc += s.value;
+    const end = (acc / total) * 360;
+    return `${s.color} ${start}deg ${end}deg`;
+  });
+  const bg = total && segments.some((s) => s.value > 0)
+    ? `conic-gradient(${stops.join(",")})`
+    : "var(--panel2)";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div style={{ width: size, height: size, borderRadius: "50%", background: bg, position: "relative", flexShrink: 0 }}>
+        <div style={{ position: "absolute", inset: "24%", borderRadius: "50%", background: "var(--panel)", display: "grid", placeItems: "center", textAlign: "center" }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 800 }}>{centerLabel}</div>
+            {centerSub && <div className="mini">{centerSub}</div>}
+          </div>
+        </div>
+      </div>
+      <div style={{ flex: 1 }}>
+        {segments.map((s, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "5px 0" }}>
+            <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+            {s.label}<b style={{ marginLeft: "auto" }}>{s.value}</b>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};

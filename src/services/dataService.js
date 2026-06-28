@@ -23,6 +23,10 @@ export const updateStudent = (id, s) => put(`/students/${id}`, s);
 // --- attendance ----------------------------------------------------------
 export const getClassAttendance = () => get("/attendance/classwise");
 export const getStudentAttendance = (id) => get(`/attendance/student/${id}`);
+export const getAttendanceByDate = (classId, date) =>
+  get(`/attendance/by-date?classId=${classId}&date=${date}`);
+export const saveAttendance = (classId, date, records) =>
+  post("/attendance", { classId, date, records });
 
 // --- subjects ------------------------------------------------------------
 export const getSubjects = () => get("/meta/subjects");
@@ -38,6 +42,8 @@ export const getMarksGrid = (examId, classId, subjectId) =>
 export const saveMarks = (examId, subjectId, marks) =>
   post("/marks/bulk", { examId, subjectId, marks });
 export const getResultsSummary = (examId) => get(`/results/summary?examId=${examId}`);
+export const getClassResults = (examId, classId) =>
+  get(`/results/class?examId=${examId}&classId=${classId}`);
 
 // --- fees ----------------------------------------------------------------
 export const getFees = (studentId) => get(`/fees?studentId=${studentId}`);

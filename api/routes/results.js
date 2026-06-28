@@ -44,4 +44,23 @@ router.get("/summary", h(async (req, res) => {
   });
 }));
 
+// GET /results/class?examId=&classId=
+//   -> [{ studentId, roll, name, avg, fails }]  ordered by most failed subjects
+router.get("/class", h(async (req, res) => {
+  const { examId, classId } = req.query;
+  if (!examId || !classId) return res.status(400).json({ error: "examId and classId required" });
+  const [rows] = await db.query(
+    `SELECT s.id AS studentId, s.roll_no AS roll, s.name,
+            ROUND(AVG(m.mark)) AS avg,
+            COALESCE(SUM(m.mark < ?), 0) AS fails
+     FROM students s
+     LEFT JOIN marks m ON m.student_id = s.id AND m.exam_id = ?
+     WHERE s.class_id = ? AND s.school_id = ?
+     GROUP BY s.id
+     ORDER BY fails DESC, avg ASC`,
+    [PASS, examId, classId, req.schoolId]
+  );
+  res.json(rows.map((r) => ({ ...r, avg: r.avg == null ? null : Number(r.avg), fails: Number(r.fails) })));
+}));
+
 module.exports = router;

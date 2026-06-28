@@ -4,60 +4,84 @@ import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
-import { Card, Stat, PageHead, Tabs, Message, Loading } from "../components/ui.jsx";
+import { Card, Stat, PageHead, Tabs, Message, Loading, Donut } from "../components/ui.jsx";
 import StudentForm from "../components/StudentForm.jsx";
 import StudentProfile from "../components/StudentProfile.jsx";
 
 const { classes } = config.academics;
 const MY_CLASS = "8-A";
+const MY_CLASS_ID = classes.indexOf(MY_CLASS) + 1; // seeded class ids match config order
 
-// Read-only overview (no editing here).
+// Read-only overview with charts.
 function Dashboard() {
   const list = useApi(() => api.listStudents(MY_CLASS), []);
   const exams = useApi(() => api.getExams(), []);
-  const msgs = useApi(() => api.getMessages(), []);
   const students = list.data || [];
   const strength = students.length;
   const avgAtt = strength ? Math.round(students.reduce((a, s) => a + Number(s.att), 0) / strength) : 0;
-  const low = students.filter((s) => Number(s.att) < 75).length;
-  const pending = students.filter((s) => s.fee !== "Paid").length;
-  const openExam = (exams.data || []).find((e) => e.status === "open");
-  const notes = ((msgs.data && msgs.data.studentFeed) || []).filter((m) => m.role === "teacher");
+
+  // latest exam → marks-based "needs attention"
+  const examList = exams.data || [];
+  const latestExam = examList.length ? examList[examList.length - 1] : null;
+  const results = useApi(
+    () => (latestExam ? api.getClassResults(latestExam.id, MY_CLASS_ID) : Promise.resolve([])),
+    [latestExam && latestExam.id]
+  );
+  const attention = (results.data || []).filter((r) => r.fails > 0); // failed ≥1 subject, sorted by fails
+
+  // chart buckets from real data
+  const attBands = [
+    { label: "≥ 90%", value: students.filter((s) => Number(s.att) >= 90).length, color: "#4ade80" },
+    { label: "75–89%", value: students.filter((s) => Number(s.att) >= 75 && Number(s.att) < 90).length, color: "#ffb454" },
+    { label: "< 75%", value: students.filter((s) => Number(s.att) < 75).length, color: "#ff5c7c" },
+  ];
+  const feeBands = [
+    { label: "Paid", value: students.filter((s) => s.fee === "Paid").length, color: "#4ade80" },
+    { label: "Partial", value: students.filter((s) => s.fee === "Partial").length, color: "#ffb454" },
+    { label: "Pending", value: students.filter((s) => s.fee === "Pending").length, color: "#ff5c7c" },
+  ];
+  const genderBands = [
+    { label: "Boys", value: students.filter((s) => s.gender === "male").length, color: "#5aa9ff" },
+    { label: "Girls", value: students.filter((s) => s.gender === "female").length, color: "#9b7bff" },
+    { label: "Not set", value: students.filter((s) => !s.gender).length, color: "#6b71a8" },
+  ];
+
   return (
     <>
       <PageHead title={`My Class — ${MY_CLASS}`} sub="Overview" right={<span className="pill">🟢 Tue, 23 Jun 2026</span>} />
       <div className="grid g4">
         <Stat label="Class strength" value={strength} delta={MY_CLASS} />
         <Stat label="Avg attendance" value={avgAtt + "%"} delta="term" dir={avgAtt >= 85 ? "up" : "down"} />
-        <Stat label="Below 75%" value={low} delta="need follow-up" dir={low ? "down" : "up"} />
-        <Stat label="Fees pending" value={pending} delta="students" dir={pending ? "down" : "up"} />
+        <Stat label="Need attention" value={attention.length} delta="failed ≥1 subject" dir={attention.length ? "down" : "up"} />
+        <Stat label="Latest exam" value={latestExam ? latestExam.name : "—"} delta="results" />
       </div>
-      <div className="grid g2" style={{ marginTop: 15 }}>
-        <Card title="At a glance">
-          <div className="subline"><div style={{ flex: 1 }} className="mini">Active exam</div><b>{openExam ? openExam.name : "—"}</b></div>
-          <div className="subline"><div style={{ flex: 1 }} className="mini">Total students</div><b>{strength}</b></div>
-          <div className="subline"><div style={{ flex: 1 }} className="mini">Low-attendance students</div><b>{low}</b></div>
-          <div className="subline"><div style={{ flex: 1 }} className="mini">Fees pending</div><b>{pending}</b></div>
-          <div className="mini" style={{ marginTop: 8 }}>Take attendance and enter marks from the left menu.</div>
+
+      <div className="grid g3" style={{ marginTop: 15 }}>
+        <Card title="Attendance">
+          <Loading state={list}><Donut segments={attBands} centerLabel={avgAtt + "%"} centerSub="avg" /></Loading>
         </Card>
-        <Card title="Recent notes to parents">
-          <Loading state={msgs}>
-            {notes.length ? notes.slice(0, 4).map((m, i) => <Message m={m} key={i} />) : <div className="mini">No notes yet.</div>}
-          </Loading>
+        <Card title="Fees">
+          <Loading state={list}><Donut segments={feeBands} centerLabel={feeBands[0].value} centerSub="paid" /></Loading>
+        </Card>
+        <Card title="Gender ratio">
+          <Loading state={list}><Donut segments={genderBands} centerLabel={strength} centerSub="students" /></Loading>
         </Card>
       </div>
-      <Card title="Students who need attention" className="" >
-        <Loading state={list}>
-          {students.filter((s) => Number(s.att) < 75 || s.fee !== "Paid").length === 0
-            ? <div className="mini">All students on track. 🎉</div>
+
+      <Card title={<>Needs attention <span className="mini">{latestExam ? `by ${latestExam.name} — most failed subjects first` : ""}</span></>}>
+        <Loading state={results}>
+          {attention.length === 0
+            ? <div className="mini">No failures in the latest exam. 🎉</div>
             : (
               <table>
-                <thead><tr><th>Roll</th><th>Name</th><th>Attendance</th><th>Fees</th></tr></thead>
+                <thead><tr><th style={{ width: 60 }}>Roll</th><th>Student</th><th style={{ width: 120 }}>Failed subjects</th><th style={{ width: 90 }}>Average</th></tr></thead>
                 <tbody>
-                  {students.filter((s) => Number(s.att) < 75 || s.fee !== "Paid").map((s) => (
-                    <tr key={s.id}><td>{s.roll}</td><td><b>{s.name}</b></td>
-                      <td style={{ color: Number(s.att) < 75 ? "var(--bad)" : undefined }}>{s.att}%</td>
-                      <td><span className={`badge ${s.fee === "Paid" ? "b-good" : s.fee === "Partial" ? "b-warn" : "b-bad"}`}>{s.fee}</span></td>
+                  {attention.map((r) => (
+                    <tr key={r.studentId}>
+                      <td>{r.roll}</td>
+                      <td><b>{r.name}</b></td>
+                      <td><span className="badge b-bad">{r.fails} failed</span></td>
+                      <td>{r.avg == null ? "—" : r.avg + "%"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -69,32 +93,52 @@ function Dashboard() {
   );
 }
 
-// Attendance taking — moved to its own menu item.
+// Attendance taking — date-wise, saved to the database.
 function AttendanceEntry() {
-  const list = useApi(() => api.listStudents(MY_CLASS), []);
-  const students = list.data || [];
-  const [present, setPresent] = useState({});
-  const initial = Object.keys(present).length === 0 && students.length
-    ? Object.fromEntries(students.map((s) => [s.roll, Number(s.att) >= 70])) : present;
-  const toggle = (roll) => setPresent({ ...initial, [roll]: !initial[roll] });
-  const count = Object.values(initial).filter(Boolean).length;
+  const [date, setDate] = useState("2026-06-23");
+  const day = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, date), [date]);
+  const rows = day.data || [];
+  const [marks, setMarks] = useState({});        // studentId -> 'present'|'absent'
+  // current status = local edit, else loaded status, else default present
+  const statusOf = (r) => marks[r.studentId] || r.status || "present";
+  const toggle = (r) => setMarks({ ...marks, [r.studentId]: statusOf(r) === "present" ? "absent" : "present" });
+  const present = rows.filter((r) => statusOf(r) === "present").length;
+
+  const save = async () => {
+    const records = rows.map((r) => ({ studentId: r.studentId, status: statusOf(r) }));
+    const res = await api.saveAttendance(MY_CLASS_ID, date, records);
+    setMarks({}); day.reload();
+    alert(`Saved attendance for ${date} (${res.saved} students).`);
+  };
+
   return (
     <>
-      <PageHead title={`Attendance — ${MY_CLASS}`} sub="Tap a card to toggle present / absent"
-        right={<span className="pill">{count} present · {students.length - count} absent</span>} />
-      <Card title={<>Today <button className="btn sm" onClick={() => alert("Attendance saved (POC)")}>Save</button></>}>
-        <Loading state={list}>
-          <div className="grid g4" style={{ gap: 9 }}>
-            {students.map((s) => {
-              const p = initial[s.roll];
-              return (
-                <div className="att-cell" key={s.roll} onClick={() => toggle(s.roll)}>
-                  <div><div className="nm">{s.name}</div><div className="rn">Roll {s.roll}</div></div>
-                  <div className={`pres ${p ? "p-yes" : "p-no"}`}>{p ? "P" : "A"}</div>
-                </div>
-              );
-            })}
-          </div>
+      <PageHead title={`Attendance — ${MY_CLASS}`} sub="Pick a date, tap to toggle, Save (stored for the year)"
+        right={<span className="pill">{present} present · {rows.length - present} absent</span>} />
+      <Card title={
+        <>
+          <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)", borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
+          </span>
+          <button className="btn sm" onClick={save}>Save attendance</button>
+        </>
+      }>
+        <Loading state={day}>
+          {rows.length === 0 ? <div className="mini">No students in this class.</div> : (
+            <div className="grid g4" style={{ gap: 9 }}>
+              {rows.map((r) => {
+                const p = statusOf(r) === "present";
+                return (
+                  <div className="att-cell" key={r.studentId} onClick={() => toggle(r)}>
+                    <div><div className="nm">{r.name}</div><div className="rn">Roll {r.roll}</div></div>
+                    <div className={`pres ${p ? "p-yes" : "p-no"}`}>{p ? "P" : "A"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="mini" style={{ marginTop: 10 }}>Saved per date in the database — viewable any day, kept for the academic year.</div>
         </Loading>
       </Card>
     </>
