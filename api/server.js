@@ -28,6 +28,7 @@ app.use("/students", require("./routes/students"));
 app.use("/attendance", require("./routes/attendance"));
 app.use("/exams", require("./routes/exams"));
 app.use("/marks", require("./routes/marks"));
+app.use("/results", require("./routes/results"));
 app.use("/messages", require("./routes/messages"));
 app.use("/fees", require("./routes/fees"));
 app.use("/meta", require("./routes/meta"));

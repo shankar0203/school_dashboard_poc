@@ -130,21 +130,32 @@ function Results() {
   const exams = useApi(() => api.getExams(), []);
   const [examId, setExamId] = useState(null);
   const current = examId || (exams.data && exams.data.length ? exams.data[0].id : null);
+  const summary = useApi(() => (current ? api.getResultsSummary(current) : Promise.resolve(null)), [current]);
+  const s = summary.data;
   return (
     <>
       <PageHead title="Exam Results" sub="Select an exam to view school-wide results" />
       <Loading state={exams}>
         <Tabs items={(exams.data || []).map((e) => ({ id: e.id, name: e.name }))} value={current} onChange={setExamId} />
+        <div className="grid g4" style={{ marginBottom: 16 }}>
+          <Stat label="Appeared" value={s ? s.appeared : "—"} delta="students" />
+          <Stat label="Pass rate" value={s ? s.passRate + "%" : "—"} delta="≥35" dir="up" />
+          <Stat label="School avg" value={s ? s.avg + "%" : "—"} delta="all subjects" dir="up" />
+          <Stat label="Distinctions" value={s ? s.distinctions : "—"} delta="≥75%" dir="up" />
+        </div>
         <Card title="Class averages">
-          <table>
-            <thead><tr><th>Class</th><th>Avg %</th><th>Pass %</th><th>Top subject</th><th>Weakest</th></tr></thead>
-            <tbody>
-              {["6-A", "7-A", "8-A", "9-A", "10-A", "12-A"].map((c, i) => (
-                <tr key={c}><td><b>{c}</b></td><td>{82 - i * 2}%</td><td>{98 - i}%</td><td>Science</td><td>{i % 2 ? "Maths" : "Social"}</td></tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mini" style={{ marginTop: 10 }}>Aggregates are sample figures — wire to a /results summary endpoint next.</div>
+          <Loading state={summary}>
+            {s && s.classes.length ? (
+              <table>
+                <thead><tr><th>Class</th><th>Avg %</th><th>Pass %</th></tr></thead>
+                <tbody>
+                  {s.classes.map((row) => (
+                    <tr key={row.cls}><td><b>{row.cls}</b></td><td>{row.avg}%</td><td>{row.pass}%</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : <div className="mini">No marks entered for this exam yet.</div>}
+          </Loading>
         </Card>
       </Loading>
     </>

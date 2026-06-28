@@ -12,7 +12,23 @@ const Row = ({ label, value }) => (
 
 export default function StudentProfile({ id, onClose, onEdit }) {
   const st = useApi(() => api.getStudent(id), [id]);
+  const fees = useApi(() => api.getFees(id), [id]);
   const s = st.data;
+
+  const recordPay = async (fee) => {
+    const amt = prompt(`Record payment for "${fee.term}" (due ${fee.due}, paid ${fee.paid}). Amount:`);
+    if (!amt) return;
+    await api.recordFeePayment(fee.id, Number(amt));
+    fees.reload();
+  };
+  const addFee = async () => {
+    const item = prompt("Fee item (e.g. Term 2 — Tuition):");
+    if (!item) return;
+    const due = prompt("Amount due:");
+    if (!due) return;
+    await api.addFee(id, item, Number(due), null);
+    fees.reload();
+  };
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -51,6 +67,28 @@ export default function StudentProfile({ id, onClose, onEdit }) {
                   <Row label="Fees" value={s.fees ? `${money(s.fees.paid)} paid · ${money(s.fees.pending)} pending` : "—"} />
                 </div>
                 {s.notes && <div className="notice" style={{ marginTop: 14 }}>📝 {s.notes}</div>}
+
+                <div className="ct" style={{ marginTop: 18 }}>
+                  Fees
+                  <button className="btn ghost sm" onClick={addFee}>＋ Add fee</button>
+                </div>
+                <Loading state={fees}>
+                  <table>
+                    <thead><tr><th>Item</th><th>Due</th><th>Paid</th><th>Balance</th><th></th></tr></thead>
+                    <tbody>
+                      {((fees.data && fees.data.terms) || []).map((t) => {
+                        const bal = Number(t.due) - Number(t.paid);
+                        return (
+                          <tr key={t.id}>
+                            <td>{t.term}</td><td>{money(t.due)}</td><td>{money(t.paid)}</td>
+                            <td style={{ color: bal > 0 ? "var(--bad)" : "var(--good)" }}>{money(bal)}</td>
+                            <td>{bal > 0 && <span className="link mini" onClick={() => recordPay(t)}>Record payment</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </Loading>
               </>
             )}
           </Loading>

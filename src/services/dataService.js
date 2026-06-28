@@ -24,13 +24,25 @@ export const updateStudent = (id, s) => put(`/students/${id}`, s);
 export const getClassAttendance = () => get("/attendance/classwise");
 export const getStudentAttendance = (id) => get(`/attendance/student/${id}`);
 
+// --- subjects ------------------------------------------------------------
+export const getSubjects = () => get("/meta/subjects");
+
 // --- exams + marks -------------------------------------------------------
 export const getExams = () => get("/exams");
+export const createExam = (name, subjectIds) => post("/exams", { name, subjectIds });
 export const getMarks = (examId, studentId) =>
   get(`/marks?examId=${examId}&studentId=${studentId}`);
+export const getMarksGrid = (examId, classId, subjectId) =>
+  get(`/marks/grid?examId=${examId}&classId=${classId}&subjectId=${subjectId}`);
+export const saveMarks = (examId, subjectId, marks) =>
+  post("/marks/bulk", { examId, subjectId, marks });
+export const getResultsSummary = (examId) => get(`/results/summary?examId=${examId}`);
 
 // --- fees ----------------------------------------------------------------
 export const getFees = (studentId) => get(`/fees?studentId=${studentId}`);
+export const addFee = (studentId, item, amount_due, due_date) =>
+  post("/fees", { studentId, item, amount_due, due_date });
+export const recordFeePayment = (feeId, amount) => post(`/fees/${feeId}/pay`, { amount });
 
 // --- events --------------------------------------------------------------
 export const getEvents = () => get("/meta/events");

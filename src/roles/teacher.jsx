@@ -8,7 +8,7 @@ import { Card, Stat, PageHead, Tabs, Message, Loading } from "../components/ui.j
 import StudentForm from "../components/StudentForm.jsx";
 import StudentProfile from "../components/StudentProfile.jsx";
 
-const { subjects, classes } = config.academics;
+const { classes } = config.academics;
 const MY_CLASS = "8-A";
 
 function Dashboard() {
@@ -102,63 +102,123 @@ function Students() {
 }
 
 function Results() {
-  const [mode, setMode] = useState("create");
-  const exams = useApi(() => api.getExams(), []);
+  const [mode, setMode] = useState("enter");
   const tabs = [
-    { id: "create", name: "① Create exam (8-A)" },
-    { id: "enter", name: "② Enter marks — Tamil · 9-A" },
+    { id: "enter", name: "Enter marks" },
+    { id: "create", name: "Create exam" },
   ];
   return (
     <>
-      <PageHead title="Exam Results" sub="Create exams (class teacher) · enter marks for your subject" />
+      <PageHead title="Exam Results" sub="Enter marks for a class & subject · create exams" />
       <Tabs items={tabs} value={mode} onChange={setMode} />
-      {mode === "create" ? (
-        <>
-          <div className="notice">As 8-A class teacher you create the exam and its subjects. Admin then grants each subject teacher access to enter their subject's marks.</div>
-          <div className="grid g2">
-            <Card title="New exam">
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <input className="compose" style={{ display: "block", width: "100%" }} defaultValue="Mid Term 1" />
-                <div className="mini">Subjects (each assigned to its teacher):</div>
-                {subjects.map((s) => (
-                  <div key={s} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 9, padding: "9px 12px" }}>
-                    <b style={{ fontSize: 13, flex: 1 }}>{s}</b>
-                    <span className="mini">teacher: {s === "Tamil" ? "Mr. Saravanan" : s === "Maths" ? "Mrs. Geetha" : "— assign —"}</span>
-                  </div>
-                ))}
-                <button className="btn" onClick={() => alert("Exam created (POC)")}>Create exam</button>
-              </div>
-            </Card>
-            <Card title="Existing exams">
-              <Loading state={exams}>
-                {(exams.data || []).map((x) => (
-                  <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 0", borderBottom: "1px solid rgba(42,47,99,.5)" }}>
-                    <b style={{ flex: 1, fontSize: 13 }}>{x.name}</b>
-                    <span className={`badge ${x.status === "open" ? "b-warn" : "b-good"}`}>{x.status === "open" ? "marks open" : "locked"}</span>
-                  </div>
-                ))}
-              </Loading>
-            </Card>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="notice">You teach <b>Tamil to 9-A</b> (cross-class access granted by admin). You can enter Tamil marks for 9-A only.</div>
-          <Card title={<>Mid Term 1 · Tamil · Class 9-A <button className="btn sm" onClick={() => alert("Marks saved (POC)")}>Save marks</button></>}>
-            <table>
-              <thead><tr><th>Roll</th><th>Student</th><th>Tamil / 100</th></tr></thead>
-              <tbody>
-                {["Anitha R.", "Bala S.", "Charan V.", "Deepa M.", "Esakki P.", "Fareed K."].map((n, i) => (
-                  <tr key={i}><td>{i + 1}</td><td>{n}</td>
-                    <td><input style={{ width: 80, background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)", borderRadius: 7, padding: "6px 9px" }} defaultValue={70 + i * 3} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </>
+      {mode === "enter" ? <EnterMarks /> : <CreateExam />}
+    </>
+  );
+}
+
+function EnterMarks() {
+  const exams = useApi(() => api.getExams(), []);
+  const subs = useApi(() => api.getSubjects(), []);
+  const [examId, setExamId] = useState("");
+  const [classId, setClassId] = useState("");
+  const [subjectId, setSubjectId] = useState("");
+  const ready = examId && classId && subjectId;
+  const grid = useApi(
+    () => (ready ? api.getMarksGrid(examId, classId, subjectId) : Promise.resolve([])),
+    [examId, classId, subjectId]
+  );
+  const [edits, setEdits] = useState({});
+  const rows = grid.data || [];
+
+  const onChange = (sid, v) => setEdits({ ...edits, [sid]: v });
+  const save = async () => {
+    const marks = rows.map((r) => ({ studentId: r.studentId, mark: edits[r.studentId] ?? r.mark }));
+    const r = await api.saveMarks(examId, subjectId, marks);
+    alert(`Saved ${r.saved} marks.`);
+    setEdits({}); grid.reload();
+  };
+
+  return (
+    <>
+      <div className="notice">Pick an exam, class and subject, enter marks, and Save — they're written to the database.</div>
+      <Card title="Select">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <select className="compose" style={{ maxWidth: 220 }} value={examId} onChange={(e) => setExamId(e.target.value)}>
+            <option value="">Exam…</option>
+            {(exams.data || []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <select className="compose" style={{ maxWidth: 160 }} value={classId} onChange={(e) => setClassId(e.target.value)}>
+            <option value="">Class…</option>
+            {classes.map((c, i) => <option key={c} value={i + 1}>{c}</option>)}
+          </select>
+          <select className="compose" style={{ maxWidth: 180 }} value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+            <option value="">Subject…</option>
+            {(subs.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+      </Card>
+      {ready && (
+        <Card title={<>Marks <button className="btn sm" onClick={save}>Save marks</button></>} className="">
+          <Loading state={grid}>
+            {rows.length === 0 ? <div className="mini">No students in this class.</div> : (
+              <table>
+                <thead><tr><th>Roll</th><th>Student</th><th>Mark / 100</th></tr></thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.studentId}><td>{r.roll}</td><td>{r.name}</td>
+                      <td><input type="number" min="0" max="100"
+                        style={{ width: 90, background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)", borderRadius: 7, padding: "6px 9px" }}
+                        value={edits[r.studentId] ?? (r.mark ?? "")}
+                        onChange={(e) => onChange(r.studentId, e.target.value)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Loading>
+        </Card>
       )}
     </>
+  );
+}
+
+function CreateExam() {
+  const exams = useApi(() => api.getExams(), []);
+  const subs = useApi(() => api.getSubjects(), []);
+  const [name, setName] = useState("");
+  const create = async () => {
+    if (!name.trim()) return;
+    const subjectIds = (subs.data || []).map((s) => s.id);
+    await api.createExam(name.trim(), subjectIds);
+    setName(""); exams.reload();
+    alert("Exam created.");
+  };
+  return (
+    <div className="grid g2">
+      <Card title="New exam">
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input className="compose" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mid Term 1" />
+          <div className="mini">Subjects added to this exam:</div>
+          <Loading state={subs}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(subs.data || []).map((s) => <span key={s.id} className="chip" style={{ fontSize: 11, background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 7, padding: "4px 9px" }}>{s.name}</span>)}
+            </div>
+          </Loading>
+          <button className="btn" onClick={create}>Create exam</button>
+        </div>
+      </Card>
+      <Card title="Existing exams">
+        <Loading state={exams}>
+          {(exams.data || []).map((x) => (
+            <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 0", borderBottom: "1px solid rgba(42,47,99,.5)" }}>
+              <b style={{ flex: 1, fontSize: 13 }}>{x.name}</b>
+              <span className={`badge ${x.status === "open" ? "b-warn" : "b-good"}`}>{x.status}</span>
+            </div>
+          ))}
+        </Loading>
+      </Card>
+    </div>
   );
 }
 
