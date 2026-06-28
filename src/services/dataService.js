@@ -26,6 +26,7 @@ export const getStudentAttendance = (id) => get(`/attendance/student/${id}`);
 
 // --- subjects ------------------------------------------------------------
 export const getSubjects = () => get("/meta/subjects");
+export const addSubject = (name) => post("/meta/subjects", { name });
 
 // --- exams + marks -------------------------------------------------------
 export const getExams = () => get("/exams");

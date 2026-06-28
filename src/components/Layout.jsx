@@ -1,7 +1,6 @@
-// Topbar (brand + signed-in user), sidebar (persona + nav), and the screen area.
+// Topbar (brand + signed-in user), sidebar (user + nav), and the screen area.
 import React from "react";
 import config from "../config/appConfig.js";
-import * as api from "../services/dataService.js";
 import { useApp } from "../context.js";
 import { NAV } from "../roles/registry.js";
 
@@ -11,7 +10,8 @@ export default function Layout() {
   const item = nav.find((n) => n.key === view) || nav[0];
   const Screen = item.Component;
   const roleMeta = config.roles[role];
-  const persona = api.getDemoUser(role); // demo persona for the screen data
+  const email = user.email || "user";
+  const displayName = email.split("@")[0];
 
   return (
     <>
@@ -31,8 +31,8 @@ export default function Layout() {
       <div className="shell">
         <aside className="side">
           <div className="who">
-            <div className="avatar" style={{ background: roleMeta.color }}>{persona.name[0]}</div>
-            <div><div className="nm">{persona.name}</div><div className="rl">{persona.sub}</div></div>
+            <div className="avatar" style={{ background: roleMeta.color }}>{displayName[0].toUpperCase()}</div>
+            <div><div className="nm">{displayName}</div><div className="rl">{roleMeta.label}</div></div>
           </div>
           <nav className="nav">
             {nav.map((n) => (
@@ -41,7 +41,7 @@ export default function Layout() {
               </a>
             ))}
           </nav>
-          <div className="ro-note">{persona.note}</div>
+          <div className="ro-note">Signed in via Cognito<br/>{email}</div>
         </aside>
         <main className="main"><Screen /></main>
       </div>

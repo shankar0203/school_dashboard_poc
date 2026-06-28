@@ -11,26 +11,78 @@ import StudentProfile from "../components/StudentProfile.jsx";
 const { classes } = config.academics;
 const MY_CLASS = "8-A";
 
+// Read-only overview (no editing here).
 function Dashboard() {
+  const list = useApi(() => api.listStudents(MY_CLASS), []);
+  const exams = useApi(() => api.getExams(), []);
+  const msgs = useApi(() => api.getMessages(), []);
+  const students = list.data || [];
+  const strength = students.length;
+  const avgAtt = strength ? Math.round(students.reduce((a, s) => a + Number(s.att), 0) / strength) : 0;
+  const low = students.filter((s) => Number(s.att) < 75).length;
+  const pending = students.filter((s) => s.fee !== "Paid").length;
+  const openExam = (exams.data || []).find((e) => e.status === "open");
+  const notes = ((msgs.data && msgs.data.studentFeed) || []).filter((m) => m.role === "teacher");
+  return (
+    <>
+      <PageHead title={`My Class — ${MY_CLASS}`} sub="Overview" right={<span className="pill">🟢 Tue, 23 Jun 2026</span>} />
+      <div className="grid g4">
+        <Stat label="Class strength" value={strength} delta={MY_CLASS} />
+        <Stat label="Avg attendance" value={avgAtt + "%"} delta="term" dir={avgAtt >= 85 ? "up" : "down"} />
+        <Stat label="Below 75%" value={low} delta="need follow-up" dir={low ? "down" : "up"} />
+        <Stat label="Fees pending" value={pending} delta="students" dir={pending ? "down" : "up"} />
+      </div>
+      <div className="grid g2" style={{ marginTop: 15 }}>
+        <Card title="At a glance">
+          <div className="subline"><div style={{ flex: 1 }} className="mini">Active exam</div><b>{openExam ? openExam.name : "—"}</b></div>
+          <div className="subline"><div style={{ flex: 1 }} className="mini">Total students</div><b>{strength}</b></div>
+          <div className="subline"><div style={{ flex: 1 }} className="mini">Low-attendance students</div><b>{low}</b></div>
+          <div className="subline"><div style={{ flex: 1 }} className="mini">Fees pending</div><b>{pending}</b></div>
+          <div className="mini" style={{ marginTop: 8 }}>Take attendance and enter marks from the left menu.</div>
+        </Card>
+        <Card title="Recent notes to parents">
+          <Loading state={msgs}>
+            {notes.length ? notes.slice(0, 4).map((m, i) => <Message m={m} key={i} />) : <div className="mini">No notes yet.</div>}
+          </Loading>
+        </Card>
+      </div>
+      <Card title="Students who need attention" className="" >
+        <Loading state={list}>
+          {students.filter((s) => Number(s.att) < 75 || s.fee !== "Paid").length === 0
+            ? <div className="mini">All students on track. 🎉</div>
+            : (
+              <table>
+                <thead><tr><th>Roll</th><th>Name</th><th>Attendance</th><th>Fees</th></tr></thead>
+                <tbody>
+                  {students.filter((s) => Number(s.att) < 75 || s.fee !== "Paid").map((s) => (
+                    <tr key={s.id}><td>{s.roll}</td><td><b>{s.name}</b></td>
+                      <td style={{ color: Number(s.att) < 75 ? "var(--bad)" : undefined }}>{s.att}%</td>
+                      <td><span className={`badge ${s.fee === "Paid" ? "b-good" : s.fee === "Partial" ? "b-warn" : "b-bad"}`}>{s.fee}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
+// Attendance taking — moved to its own menu item.
+function AttendanceEntry() {
   const list = useApi(() => api.listStudents(MY_CLASS), []);
   const students = list.data || [];
   const [present, setPresent] = useState({});
-  // default present from attendance %, lazily once data arrives
   const initial = Object.keys(present).length === 0 && students.length
     ? Object.fromEntries(students.map((s) => [s.roll, Number(s.att) >= 70])) : present;
   const toggle = (roll) => setPresent({ ...initial, [roll]: !initial[roll] });
   const count = Object.values(initial).filter(Boolean).length;
   return (
     <>
-      <PageHead title={`My Class — ${MY_CLASS}`} sub="Mr. Saravanan K. · class teacher · Tue 23 Jun"
-        right={<span className="pill">{students.length} students</span>} />
-      <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Stat label="Present today" value={count} delta={`of ${students.length}`} dir="up" />
-        <Stat label="Absent" value={students.length - count} delta="tap to change" dir="down" />
-        <Stat label="Class size" value={students.length} delta={MY_CLASS} />
-        <Stat label="Pending" value="Marks" delta="Half-Yearly Tamil" />
-      </div>
-      <Card title={<>Take attendance — {MY_CLASS} <button className="btn sm" onClick={() => alert("Attendance saved (POC)")}>Save</button></>}>
+      <PageHead title={`Attendance — ${MY_CLASS}`} sub="Tap a card to toggle present / absent"
+        right={<span className="pill">{count} present · {students.length - count} absent</span>} />
+      <Card title={<>Today <button className="btn sm" onClick={() => alert("Attendance saved (POC)")}>Save</button></>}>
         <Loading state={list}>
           <div className="grid g4" style={{ gap: 9 }}>
             {students.map((s) => {
@@ -43,7 +95,6 @@ function Dashboard() {
               );
             })}
           </div>
-          <div className="mini" style={{ marginTop: 10 }}>Tap a card to toggle present/absent.</div>
         </Loading>
       </Card>
     </>
@@ -187,24 +238,43 @@ function CreateExam() {
   const exams = useApi(() => api.getExams(), []);
   const subs = useApi(() => api.getSubjects(), []);
   const [name, setName] = useState("");
+  const [chosen, setChosen] = useState({});   // subjectId -> bool
+  const allSubs = subs.data || [];
+
+  const toggle = (id) => setChosen({ ...chosen, [id]: !chosen[id] });
+  const selectedIds = allSubs.filter((s) => chosen[s.id]).map((s) => s.id);
+
+  const addSub = async () => {
+    const nm = prompt("New subject name (e.g. Hindi):");
+    if (!nm) return;
+    const r = await api.addSubject(nm.trim());
+    await subs.reload();
+    setChosen((c) => ({ ...c, [r.id]: true }));
+  };
   const create = async () => {
-    if (!name.trim()) return;
-    const subjectIds = (subs.data || []).map((s) => s.id);
-    await api.createExam(name.trim(), subjectIds);
-    setName(""); exams.reload();
+    if (!name.trim()) { alert("Enter an exam name"); return; }
+    const ids = selectedIds.length ? selectedIds : allSubs.map((s) => s.id);
+    await api.createExam(name.trim(), ids);
+    setName(""); setChosen({}); exams.reload();
     alert("Exam created.");
   };
   return (
     <div className="grid g2">
       <Card title="New exam">
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input className="compose" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mid Term 1" />
-          <div className="mini">Subjects added to this exam:</div>
+          <input className="compose" style={{ width: "100%" }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Exam name, e.g. Mid Term 1" />
+          <div className="mini">Choose subjects for this exam (e.g. Hindi only for classes that take it):</div>
           <Loading state={subs}>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(subs.data || []).map((s) => <span key={s.id} className="chip" style={{ fontSize: 11, background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 7, padding: "4px 9px" }}>{s.name}</span>)}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {allSubs.map((s) => (
+                <label key={s.id} className="chip" style={{ cursor: "pointer", fontSize: 12, background: chosen[s.id] ? "rgba(124,92,255,.25)" : "var(--panel2)", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 11px", display: "flex", gap: 6, alignItems: "center" }}>
+                  <input type="checkbox" checked={!!chosen[s.id]} onChange={() => toggle(s.id)} />{s.name}
+                </label>
+              ))}
+              <button className="btn ghost sm" onClick={addSub}>＋ Add subject</button>
             </div>
           </Loading>
+          <div className="mini">{selectedIds.length ? `${selectedIds.length} selected` : "none selected → all subjects will be used"}</div>
           <button className="btn" onClick={create}>Create exam</button>
         </div>
       </Card>
@@ -284,6 +354,7 @@ function Messages() {
 
 export const teacherNav = [
   { key: "dashboard", label: "My Class",        icon: "🏠", Component: Dashboard },
+  { key: "attendance", label: "Attendance",     icon: "🗓️", Component: AttendanceEntry },
   { key: "students", label: "Students",         icon: "🎓", Component: Students },
   { key: "results", label: "Exam Results",      icon: "📊", Component: Results },
   { key: "notes", label: "Notes to Parent",     icon: "📝", Component: Notes },

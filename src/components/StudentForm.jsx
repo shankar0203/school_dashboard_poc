@@ -5,6 +5,8 @@
 import React, { useState } from "react";
 import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
+import { useApi } from "../hooks/useApi.js";
+import { Loading, money } from "./ui.jsx";
 
 const BLANK = {
   name: "", cls: "", roll: "", admission_no: "", gender: "", dob: "",
@@ -30,6 +32,19 @@ export default function StudentForm({ student, classes, lockedClass, onClose, on
   );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  // fees (edit mode only)
+  const fees = useApi(() => (editing ? api.getFees(student.id) : Promise.resolve(null)), [editing]);
+  const recordPay = async (fee) => {
+    const amt = prompt(`Record payment for "${fee.term}" (balance ${Number(fee.due) - Number(fee.paid)}). Amount:`);
+    if (!amt) return;
+    await api.recordFeePayment(fee.id, Number(amt)); fees.reload();
+  };
+  const addFee = async () => {
+    const item = prompt("Fee item (e.g. Term 2 — Tuition):"); if (!item) return;
+    const due = prompt("Amount due:"); if (!due) return;
+    await api.addFee(student.id, item, Number(due), null); fees.reload();
+  };
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
@@ -105,6 +120,35 @@ export default function StudentForm({ student, classes, lockedClass, onClose, on
             <label className="fld full"><span>Notes (medical / general)</span><input value={f.notes} onChange={set("notes")} /></label>
           </div>
           {err && <div className="login-err">{err}</div>}
+
+          {editing && (
+            <>
+              <div className="ct" style={{ marginTop: 18 }}>
+                Fees
+                <button className="btn ghost sm" onClick={addFee}>＋ Add fee</button>
+              </div>
+              <Loading state={fees}>
+                <table>
+                  <thead><tr><th>Item</th><th>Due</th><th>Paid</th><th>Balance</th><th></th></tr></thead>
+                  <tbody>
+                    {((fees.data && fees.data.terms) || []).map((t) => {
+                      const bal = Number(t.due) - Number(t.paid);
+                      return (
+                        <tr key={t.id}>
+                          <td>{t.term}</td><td>{money(t.due)}</td><td>{money(t.paid)}</td>
+                          <td style={{ color: bal > 0 ? "var(--bad)" : "var(--good)" }}>{money(bal)}</td>
+                          <td>{bal > 0 && <span className="link mini" onClick={() => recordPay(t)}>Record payment</span>}</td>
+                        </tr>
+                      );
+                    })}
+                    {fees.data && fees.data.terms && fees.data.terms.length === 0 && (
+                      <tr><td colSpan={5} className="mini">No fee items yet — use “Add fee”.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </Loading>
+            </>
+          )}
         </div>
 
         <div className="modal-foot">
