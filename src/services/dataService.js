@@ -35,6 +35,7 @@ export const addSubject = (name) => post("/meta/subjects", { name });
 // --- exams + marks -------------------------------------------------------
 export const getExams = () => get("/exams");
 export const createExam = (name, subjectIds) => post("/exams", { name, subjectIds });
+export const setExamStatus = (examId, status) => put(`/exams/${examId}/status`, { status });
 export const getMarks = (examId, studentId) =>
   get(`/marks?examId=${examId}&studentId=${studentId}`);
 export const getMarksGrid = (examId, classId, subjectId) =>

@@ -41,6 +41,14 @@ router.post("/bulk", h(async (req, res) => {
   if (!examId || !subjectId || !Array.isArray(marks))
     return res.status(400).json({ error: "examId, subjectId, marks[] required" });
 
+  // can't enter marks once the exam is locked
+  const [[exam]] = await db.query(
+    "SELECT status FROM exams WHERE id = ? AND school_id = ?",
+    [examId, req.schoolId]
+  );
+  if (exam && exam.status === "locked")
+    return res.status(403).json({ error: "This exam is locked — marks entry is closed." });
+
   const valid = marks.filter((m) => m.mark !== "" && m.mark != null && !isNaN(Number(m.mark)));
   if (!valid.length) return res.json({ saved: 0 });
 

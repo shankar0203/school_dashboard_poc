@@ -32,4 +32,16 @@ router.post("/", h(async (req, res) => {
   res.json({ id: examId });
 }));
 
+// PUT /exams/:id/status  { status: 'open' | 'locked' }
+router.put("/:id/status", h(async (req, res) => {
+  const { status } = req.body;
+  if (!["open", "locked"].includes(status))
+    return res.status(400).json({ error: "status must be 'open' or 'locked'" });
+  await db.query(
+    "UPDATE exams SET status = ? WHERE id = ? AND school_id = ?",
+    [status, req.params.id, req.schoolId]
+  );
+  res.json({ ok: true });
+}));
+
 module.exports = router;

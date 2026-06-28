@@ -130,11 +130,23 @@ function Results() {
   const exams = useApi(() => api.getExams(), []);
   const [examId, setExamId] = useState(null);
   const current = examId || (exams.data && exams.data.length ? exams.data[0].id : null);
+  const currentExam = (exams.data || []).find((e) => e.id === current);
   const summary = useApi(() => (current ? api.getResultsSummary(current) : Promise.resolve(null)), [current]);
   const s = summary.data;
+  const toggleLock = async () => {
+    if (!currentExam) return;
+    await api.setExamStatus(currentExam.id, currentExam.status === "locked" ? "open" : "locked");
+    exams.reload();
+  };
   return (
     <>
-      <PageHead title="Exam Results" sub="Select an exam to view school-wide results" />
+      <PageHead title="Exam Results" sub="Select an exam · lock it once marks are finalised"
+        right={currentExam && (
+          <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span className={`badge ${currentExam.status === "locked" ? "b-good" : "b-warn"}`}>{currentExam.status}</span>
+            <button className="btn sm" onClick={toggleLock}>{currentExam.status === "locked" ? "Unlock" : "Lock exam"}</button>
+          </span>
+        )} />
       <Loading state={exams}>
         <Tabs items={(exams.data || []).map((e) => ({ id: e.id, name: e.name }))} value={current} onChange={setExamId} />
         <div className="grid g4" style={{ marginBottom: 16 }}>
