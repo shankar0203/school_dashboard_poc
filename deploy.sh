@@ -31,11 +31,17 @@ echo "==> 4/5  Publish build to Nginx web root"
 sudo rm -rf /var/www/html/*
 sudo cp -r "$APP_DIR"/dist/* /var/www/html/
 
-echo "==> 5/5  Write Nginx config + restart"
-sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX'
+echo "==> 5/5  Nginx config + restart"
+# If certbot has already added SSL, DON'T overwrite the config (that would
+# wipe HTTPS). Just reload so the new build is served.
+if sudo grep -q "ssl_certificate" /etc/nginx/sites-available/default 2>/dev/null; then
+  echo "   nginx already has HTTPS (certbot) — keeping config, reloading."
+  sudo systemctl reload nginx
+else
+  sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX'
 server {
     listen 80 default_server;
-    server_name _;
+    server_name invisos.in www.invisos.in;
     root /var/www/html;
     index index.html;
 
@@ -43,7 +49,8 @@ server {
     location /api/ { proxy_pass http://127.0.0.1:4000/; }
 }
 NGINX
-sudo nginx -t && sudo systemctl restart nginx
+  sudo nginx -t && sudo systemctl restart nginx
+fi
 
 echo "==> Start/restart the API (Express on :4000 via pm2)"
 if [ -d "$APP_DIR/api" ]; then
