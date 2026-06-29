@@ -14,18 +14,24 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
 echo "==> Deploying from: $APP_DIR"
 
-echo "==> 1/4  Pull latest code"
+echo "==> 1/5  Pull latest code"
+git checkout -- src/config/env.js 2>/dev/null || true   # drop generated file so pull is clean
 git pull || echo "(skipping git pull)"
 
-echo "==> 2/4  Install dependencies + build"
+echo "==> 2/5  Apply config from config.values (Cognito + RDS)"
+# Edit ~/app/config.values ONCE on the server; this regenerates env.js + api/.env
+# from it every deploy, so config never drifts back to placeholders.
+bash scripts/apply-config.sh || echo "(!) config.values not set yet — using committed placeholder env.js"
+
+echo "==> 3/5  Install dependencies + build"
 npm install
 npm run build
 
-echo "==> 3/4  Publish build to Nginx web root"
+echo "==> 4/5  Publish build to Nginx web root"
 sudo rm -rf /var/www/html/*
 sudo cp -r "$APP_DIR"/dist/* /var/www/html/
 
-echo "==> 4/4  Write Nginx config + restart"
+echo "==> 5/5  Write Nginx config + restart"
 sudo tee /etc/nginx/sites-available/default >/dev/null <<'NGINX'
 server {
     listen 80 default_server;
