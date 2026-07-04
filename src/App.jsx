@@ -29,7 +29,7 @@ export default function App() {
     return (
       <div className="center-msg">
         <p>Signed in as <b>{auth.user.email}</b>, but this account isn't in a role group
-          (student / teacher / principal).</p>
+          (student / parent / teacher / principal / school-admin / owner).</p>
         <p className="mini">Ask an admin to add you to a group in Cognito.</p>
         <button className="btn" onClick={signOut} style={{ marginTop: 14 }}>Sign out</button>
       </div>
