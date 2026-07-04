@@ -13,9 +13,26 @@ const pool = new CognitoUserPool({
 });
 
 // pick the highest-privilege role the user belongs to
-const ROLE_PRECEDENCE = ["principal", "teacher", "student"];
+const ROLE_PRECEDENCE = ["principal", "teacher", "student", "parent", "guest"];
+
+const GROUP_TO_ROLE = {
+  // short names (legacy)
+  "principal":           "principal",
+  "teacher":             "teacher",
+  "student":             "student",
+  "parent":              "parent",
+  "guest":               "guest",
+  // vidyam-prefixed names (Cognito groups from CFT)
+  "vidyam-leadership":   "principal",
+  "vidyam-school-admin": "principal",
+  "vidyam-teacher":      "teacher",
+  "vidyam-parent":       "parent",
+  "vidyam-guest":        "guest",
+};
+
 export function roleFromGroups(groups = []) {
-  return ROLE_PRECEDENCE.find((r) => groups.includes(r)) || null;
+  const roles = groups.map((g) => GROUP_TO_ROLE[g]).filter(Boolean);
+  return ROLE_PRECEDENCE.find((r) => roles.includes(r)) || null;
 }
 
 function sessionToUser(session) {
