@@ -1,0 +1,480 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Vidyam School Management Platform - Infrastructure Stack v4
+  Ubuntu 22.04 LTS. Provisions EC2, RDS MySQL, Cognito (5 groups), ALB.
+  UserData installs deps via scripts/install-deps.sh from the app repo.
+  ACM and R53 wired manually after deploy.
+
+# ============================================================
+# DEPLOY ORDER
+# 1. Deploy this stack and note the Outputs
+# 2. SSH: ssh -i key.pem ubuntu@<EC2PublicIP>
+# 3. Wait for UserData to finish: tail -f /var/log/vidyam-deps.log
+# 4. cd /home/ubuntu/vidyam && bash scripts/setup-env.sh  (enter DB pw once)
+# 5. npm install && npm run build
+# 6. cd api && npm install
+# 7. mysql -h <RDSEndpoint> -u vidyam_admin -p < db/schema.sql
+# 8. mysql -h <RDSEndpoint> -u vidyam_admin -p < db/seed.sql
+# 9. pm2 start server.js --name vidyam-api && pm2 save && pm2 startup
+# 10. Configure Nginx + systemctl start nginx
+# 11. Point R53 ALIAS to ALBDNSName output
+# ============================================================
+
+Parameters:
+
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+
+  ALBSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two public subnets in different AZs for the ALB
+
+  EC2SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet for the EC2 instance
+
+  DBSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Two private subnets in different AZs for RDS
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 key pair for SSH
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t2.micro, t3.micro, t3.small, t3.medium]
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium]
+
+  DBName:
+    Type: String
+    Default: school_app
+
+  DBUsername:
+    Type: String
+    Default: vidyam_admin
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: RDS master password (min 8 chars)
+
+Resources:
+
+  # ============================================================
+  # IAM - EC2 role
+  # ============================================================
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub vidyam-ec2-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: VidyamEC2Permissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CognitoAdminActions
+                Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminEnableUser
+                  - cognito-idp:AdminDisableUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:ListUsers
+                Resource: !GetAtt VidyamUserPool.Arn
+              - Sid: CloudFormationReadOutputs
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+              - Sid: EC2DescribeTags
+                Effect: Allow
+                Action:
+                  - ec2:DescribeTags
+                Resource: '*'
+              - Sid: S3Reports
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: arn:aws:s3:::eduos-reports-prod/*
+              - Sid: S3List
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: arn:aws:s3:::eduos-reports-prod
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub vidyam-ec2-profile-${Environment}
+      Roles:
+        - !Ref EC2Role
+
+  # ============================================================
+  # Security Groups
+  # ============================================================
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - HTTP and HTTPS from internet
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-alb-sg-${Environment}
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 - HTTP from ALB and SSH
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: HTTP from ALB only
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-ec2-sg-${Environment}
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS - MySQL from EC2 only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+          Description: MySQL from EC2 only
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-db-sg-${Environment}
+
+  # ============================================================
+  # EC2 - Ubuntu 22.04 LTS + Elastic IP
+  # UserData: installs git, clones repo, runs scripts/install-deps.sh
+  # ============================================================
+
+  VidyamEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}'
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref EC2SubnetId
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-app-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/vidyam-init.log) 2>&1
+          echo "=== Installing git ==="
+          apt-get update -y
+          apt-get install -y git
+          echo "=== Cloning app ==="
+          cd /home/ubuntu
+          git clone https://github.com/shankar0203/school_dashboard vidyam
+          chown -R ubuntu:ubuntu vidyam
+          echo "=== Running dependency installer ==="
+          bash /home/ubuntu/vidyam/scripts/install-deps.sh
+          echo "=== Boot complete. SSH in and run: bash vidyam/scripts/setup-env.sh ==="
+
+  ElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-eip-${Environment}
+
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref VidyamEC2Instance
+      EIP: !Ref ElasticIP
+
+  # ============================================================
+  # RDS MySQL 8.0
+  # ============================================================
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Vidyam RDS subnet group
+      SubnetIds: !Ref DBSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-db-subnet-group-${Environment}
+
+  VidyamDBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub vidyam-db-${Environment}
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: mysql
+      EngineVersion: '8.0'
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      AllocatedStorage: '20'
+      StorageType: gp2
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DBSecurityGroup
+      BackupRetentionPeriod: 7
+      DeletionProtection: false
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-db-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================================================
+  # Cognito - User Pool + 5 groups (no sample users)
+  # ============================================================
+
+  VidyamUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub vidyam-user-pool-${Environment}
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailMessage: 'Your Vidyam login: {username} / temp password: {####}'
+          EmailSubject: 'Welcome to Vidyam'
+      UserPoolTags:
+        Environment: !Ref Environment
+
+  VidyamUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub vidyam-web-client-${Environment}
+      UserPoolId: !Ref VidyamUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      PreventUserExistenceErrors: ENABLED
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+
+  GroupLeadership:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-leadership
+      Description: Platform owner - cross-school view
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 1
+
+  GroupSchoolAdmin:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-school-admin
+      Description: School admin - full school access
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 2
+
+  GroupTeacher:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-teacher
+      Description: Teacher - own class attendance and marks
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 3
+
+  GroupParent:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-parent
+      Description: Parent - read-only view of own child
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 4
+
+  GroupGuest:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-guest
+      Description: Guest - demo access
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 5
+
+  # ============================================================
+  # ALB + Target Group
+  # ============================================================
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: VidyamEC2Instance
+    Properties:
+      Name: !Sub vidyam-tg-${Environment}
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: instance
+      Targets:
+        - Id: !Ref VidyamEC2Instance
+          Port: 80
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-tg-${Environment}
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub vidyam-alb-${Environment}
+      Scheme: internet-facing
+      Type: application
+      Subnets: !Ref ALBSubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub vidyam-alb-${Environment}
+        - Key: Environment
+          Value: !Ref Environment
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+# ============================================================
+# Outputs
+# ============================================================
+
+Outputs:
+
+  EC2PublicIP:
+    Description: SSH - ssh -i key.pem ubuntu@<this IP>
+    Value: !Ref ElasticIP
+
+  EC2InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref VidyamEC2Instance
+
+  RDSEndpoint:
+    Description: Paste into backend .env as DB_HOST (auto-set by setup-env.sh)
+    Value: !GetAtt VidyamDBInstance.Endpoint.Address
+
+  RDSPort:
+    Description: DB port
+    Value: !GetAtt VidyamDBInstance.Endpoint.Port
+
+  ALBDNSName:
+    Description: Add as ALIAS record in Route 53 for your domain
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  CognitoUserPoolId:
+    Description: Auto-populated into .env by setup-env.sh
+    Value: !Ref VidyamUserPool
+
+  CognitoAppClientId:
+    Description: Auto-populated into .env by setup-env.sh
+    Value: !Ref VidyamUserPoolClient
+
+  NextStepsAfterDeploy:
+    Description: Steps after CREATE_COMPLETE
+    Value: >-
+      1) ssh -i key.pem ubuntu@EC2PublicIP
+      2) tail -f /var/log/vidyam-deps.log  (wait for deps to finish)
+      3) cd /home/ubuntu/vidyam && bash scripts/setup-env.sh  (enter DB pw once)
+      4) npm install && npm run build
+      5) cd api && npm install
+      6) mysql -h RDSEndpoint -u vidyam_admin -p < db/schema.sql
+      7) mysql -h RDSEndpoint -u vidyam_admin -p < db/seed.sql
+      8) pm2 start server.js --name vidyam-api && pm2 save && pm2 startup
+      9) Configure Nginx and run systemctl start nginx
+      10) Add R53 ALIAS record pointing to ALBDNSName
