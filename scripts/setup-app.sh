@@ -60,8 +60,8 @@ server {
     listen 80;
     server_name _;
 
-    location /api {
-        proxy_pass http://localhost:4000;
+    location /api/ {
+        proxy_pass http://localhost:4000/;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -78,8 +78,8 @@ server {
 }
 EOF
 
-# Remove default Nginx server block to avoid conflict on port 80
-sed -i '/^\s*server\s*{/,/^\s*}/d' /etc/nginx/nginx.conf
+# Remove default Nginx site to avoid port 80 conflict
+rm -f /etc/nginx/sites-enabled/default
 
 nginx -t
 systemctl restart nginx
