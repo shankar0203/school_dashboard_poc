@@ -284,7 +284,7 @@ Resources:
           Value: !Ref Environment
 
   # ============================================================
-  # Cognito - User Pool + 5 groups (no sample users)
+  # Cognito - User Pool + 7 groups (no sample users)
   # ============================================================
 
   VidyamUserPool:
@@ -378,6 +378,22 @@ Resources:
       Description: Guest - demo access
       UserPoolId: !Ref VidyamUserPool
       Precedence: 5
+
+  GroupPrincipal:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-principal
+      Description: Principal - full school access
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 6
+
+  GroupStudent:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: vidyam-student
+      Description: Student - read-only own data
+      UserPoolId: !Ref VidyamUserPool
+      Precedence: 7
 
   # ============================================================
   # ALB + Target Group

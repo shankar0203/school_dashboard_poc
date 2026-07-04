@@ -27,9 +27,11 @@ const GROUP_TO_ROLE = {
   "guest":              "guest",
   // vidyam-prefixed names (Cognito groups from CFT)
   "vidyam-leadership":   "owner",
+  "vidyam-principal":    "principal",
   "vidyam-school-admin": "schoolAdmin",
   "vidyam-teacher":      "teacher",
   "vidyam-parent":       "parent",
+  "vidyam-student":      "student",
   "vidyam-guest":        "guest",
 };
 

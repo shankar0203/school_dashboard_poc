@@ -3,6 +3,19 @@
 -- =========================================================================
 USE school_app;
 
+-- Clean up any partial inserts from previous failed runs
+DELETE FROM marks      WHERE school_id = 1 AND student_id >= 7;
+DELETE FROM fees       WHERE school_id = 1 AND student_id >= 7;
+DELETE FROM attendance WHERE school_id = 1 AND student_id >= 7;
+DELETE FROM students   WHERE school_id = 1 AND id >= 7;
+
+-- Move existing 8-A students (IDs 2-6) to rolls 31-35 to free up 1-29 for new inserts
+UPDATE students SET roll_no = 31 WHERE id = 2 AND school_id = 1;
+UPDATE students SET roll_no = 32 WHERE id = 3 AND school_id = 1;
+UPDATE students SET roll_no = 33 WHERE id = 4 AND school_id = 1;
+UPDATE students SET roll_no = 34 WHERE id = 5 AND school_id = 1;
+UPDATE students SET roll_no = 35 WHERE id = 6 AND school_id = 1;
+
 -- Students 8-A new (IDs 7-35) -------------------------------------------
 INSERT INTO students (id,school_id,class_id,roll_no,name,gender,guardian_name,guardian_phone) VALUES
   (7,1,5,1,'Madhavan Anand','male','Vishnu Anand','9947911349'),
@@ -16,7 +29,7 @@ INSERT INTO students (id,school_id,class_id,roll_no,name,gender,guardian_name,gu
   (15,1,5,9,'Suresh Perumal','male','Suresh Perumal','9814426514'),
   (16,1,5,10,'Gowtham Thangavel','male','Sakthivel Thangavel','9648806619'),
   (17,1,5,11,'Bharathi Krishnan','female','Venkatesh Krishnan','9685889680'),
-  (18,1,5,12,'Padmavathi Balan','female','Bharath Balan','9806570376'),
+  (18,1,5,30,'Padmavathi Balan','female','Bharath Balan','9806570376'),
   (19,1,5,13,'Ranjith Thangavel','male','Logesh Thangavel','9897010891'),
   (20,1,5,14,'Abinaya Karthik','female','Balamurugan Karthik','9661499497'),
   (21,1,5,15,'Selvi Nathan','female','Tharun Nathan','9944113746'),
