@@ -19,10 +19,10 @@ export const config = {
   // logoUrl: path to school logo image. If set, shown instead of logoInitial.
   // -------------------------------------------------------------------------
   app: {
-    name: "Vidyam",              // ← School name shown in topbar (change per school)
+    name: "ABC School",          // ← School name shown in topbar (change per school)
     tagline: "School Management",
-    nativeName: "வித்யம்",        // secondary script; set "" to hide
-    logoInitial: "வி",           // letter shown in badge when no logoUrl
+    nativeName: "",              // secondary script; set "" to hide
+    logoInitial: "A",            // letter shown in badge when no logoUrl
     logoUrl: "",                 // optional school logo image URL (overrides logoInitial)
     supportEmail: "hello@invisos.in",
     locale: "en-IN",
@@ -63,7 +63,7 @@ export const config = {
   // SCHOOL  (the tenant — later comes from the logged-in user's school)
   // -------------------------------------------------------------------------
   school: {
-    name: "Vidyam Public School",
+    name: "ABC School",
     city: "Coimbatore",
     academicYear: "2025–26",
   },
