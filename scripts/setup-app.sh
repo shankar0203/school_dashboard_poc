@@ -11,6 +11,9 @@ APP_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "=== Vidyam App Setup ==="
 
+# Fix home directory permissions so Nginx (www-data) can read dist
+chmod 755 /home/ubuntu
+
 # ── Pre-check ─────────────────────────────────────────────────────────────
 if [ ! -f "$APP_DIR/api/.env" ]; then
   echo "ERROR: api/.env not found. Run scripts/setup-env.sh first."
