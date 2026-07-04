@@ -39,7 +39,9 @@ button, input, select, textarea { font-family: inherit; outline: none; }
 .nav a.on { background:linear-gradient(90deg,rgba(124,92,255,.28),transparent); color:#fff;
   border-left:3px solid var(--pri); }
 .nav .ic { width:18px; text-align:center; }
-.ro-note { margin-top:auto; font-size:10px; color:var(--muteder); padding:10px 6px; line-height:1.5; }
+.ro-note { font-size:10px; color:var(--muteder); padding:10px 6px; line-height:1.5; }
+.powered-by { display:block; margin-top:auto; padding:10px 6px 14px; font-size:10px; color:var(--muteder); text-decoration:none; transition:color .2s; }
+.powered-by:hover { color:var(--pri); }
 
 .main { flex:1; padding:24px 30px; overflow:auto; }
 .ph { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px; }

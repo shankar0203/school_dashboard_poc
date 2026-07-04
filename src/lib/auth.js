@@ -12,19 +12,22 @@ const pool = new CognitoUserPool({
   ClientId: config.cognito.clientId,
 });
 
-// pick the highest-privilege role the user belongs to
-const ROLE_PRECEDENCE = ["principal", "teacher", "student", "parent", "guest"];
+// Highest privilege wins (order matters)
+const ROLE_PRECEDENCE = ["owner", "principal", "schoolAdmin", "teacher", "parent", "student", "guest"];
 
 const GROUP_TO_ROLE = {
-  // short names (legacy)
-  "principal":           "principal",
-  "teacher":             "teacher",
-  "student":             "student",
-  "parent":              "parent",
-  "guest":               "guest",
+  // short names
+  "owner":              "owner",
+  "principal":          "principal",
+  "schoolAdmin":        "schoolAdmin",
+  "school-admin":       "schoolAdmin",
+  "teacher":            "teacher",
+  "parent":             "parent",
+  "student":            "student",
+  "guest":              "guest",
   // vidyam-prefixed names (Cognito groups from CFT)
-  "vidyam-leadership":   "principal",
-  "vidyam-school-admin": "principal",
+  "vidyam-leadership":   "owner",
+  "vidyam-school-admin": "schoolAdmin",
   "vidyam-teacher":      "teacher",
   "vidyam-parent":       "parent",
   "vidyam-guest":        "guest",

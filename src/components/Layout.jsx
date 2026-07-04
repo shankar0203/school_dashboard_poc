@@ -17,7 +17,11 @@ export default function Layout() {
     <>
       <div className="topbar">
         <div className="brand">
-          <div className="logo">{config.app.logoInitial}</div>
+          <div className="logo">
+            {config.app.logoUrl
+              ? <img src={config.app.logoUrl} alt={config.app.name} style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "inherit" }} />
+              : config.app.logoInitial}
+          </div>
           {config.app.name}
           {config.app.nativeName && <span className="ta">{config.app.nativeName}</span>}
         </div>
@@ -42,6 +46,14 @@ export default function Layout() {
             ))}
           </nav>
           <div className="ro-note">Signed in via Cognito<br/>{email}</div>
+          <a
+            className="powered-by"
+            href={config.platform.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Powered by {config.platform.name}
+          </a>
         </aside>
         <main className="main"><Screen /></main>
       </div>

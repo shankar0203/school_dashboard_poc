@@ -15,16 +15,26 @@ import env from "./env.js";
 
 export const config = {
   // -------------------------------------------------------------------------
-  // BRAND  (rename the product here)
+  // SCHOOL BRANDING  (change per deployment — each school gets their own name + logo)
+  // logoUrl: path to school logo image. If set, shown instead of logoInitial.
   // -------------------------------------------------------------------------
   app: {
-    name: "Vidyam",              // ← PRODUCT NAME (placeholder — change anytime)
+    name: "Vidyam",              // ← School name shown in topbar (change per school)
     tagline: "School Management",
-    nativeName: "வித்யம்",        // secondary script next to the name; set "" to hide
-    logoInitial: "வி",           // letter/glyph shown in the logo badge
-    supportEmail: "hello@example.com",
+    nativeName: "வித்யம்",        // secondary script; set "" to hide
+    logoInitial: "வி",           // letter shown in badge when no logoUrl
+    logoUrl: "",                 // optional school logo image URL (overrides logoInitial)
+    supportEmail: "hello@invisos.in",
     locale: "en-IN",
     currency: "₹",
+  },
+
+  // -------------------------------------------------------------------------
+  // PLATFORM  (Invisos branding — shown as "Powered by" in sidebar footer)
+  // -------------------------------------------------------------------------
+  platform: {
+    name: "Invisos",
+    url: "https://invisos.in",
   },
 
   // -------------------------------------------------------------------------
@@ -98,9 +108,12 @@ export const config = {
   // ROLES  (label + accent colour per role; nav/screens live in the registry)
   // -------------------------------------------------------------------------
   roles: {
-    student:   { label: "Student",           color: "#9b7bff" },
-    teacher:   { label: "Teacher",            color: "#ffb454" },
-    principal: { label: "Principal / Admin",  color: "#34d1bf" },
+    student:     { label: "Student",        color: "#9b7bff" },
+    parent:      { label: "Parent",         color: "#5aa9ff" },
+    teacher:     { label: "Class Teacher",  color: "#ffb454" },
+    principal:   { label: "Principal",      color: "#34d1bf" },
+    schoolAdmin: { label: "School Admin",   color: "#ff5c7c" },
+    owner:       { label: "Product Owner",  color: "#4ade80" },
   },
 
   // -------------------------------------------------------------------------
@@ -109,9 +122,11 @@ export const config = {
   features: {
     fees: true,
     events: true,
-    studentMessaging: true,   // student can post messages (seen by teacher + principal)
-    parentRole: false,        // parent portal not enabled yet
-    httpsEnforced: false,     // ⚠ set true once HTTPS is configured before go-live
+    studentMessaging: true,
+    parentRole: true,
+    schoolAdminRole: true,
+    ownerRole: true,
+    httpsEnforced: false,     // ⚠ set true once HTTPS is live
   },
 };
 
