@@ -12,95 +12,369 @@ const { classes } = config.academics;
 const MY_CLASS = "8-A";
 const MY_CLASS_ID = classes.indexOf(MY_CLASS) + 1; // seeded class ids match config order
 
-// Read-only overview with charts.
-function Dashboard() {
-  const list = useApi(() => api.listStudents(MY_CLASS), []);
-  const exams = useApi(() => api.getExams(), []);
-  const students = list.data || [];
-  const strength = students.length;
-  const avgAtt = strength ? Math.round(students.reduce((a, s) => a + Number(s.att), 0) / strength) : 0;
+// ─── helpers ────────────────────────────────────────────────────────────────
+const GRADE_COLORS = {
+  "A+": "#4ade80",
+  "A":  "#34d1bf",
+  "B":  "#5aa9ff",
+  "C":  "#ffb454",
+  "D":  "#ff8c42",
+  "F":  "#ff5c7c",
+};
+const GRADE_ORDER = ["A+", "A", "B", "C", "D", "F"];
 
-  // latest exam → marks-based "needs attention"
-  const examList = exams.data || [];
+function getLocalDateStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function getLocalDateLabel() {
+  return new Date().toLocaleDateString("en-IN", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+// Vertical bar chart — no deps, pure CSS
+function GradeBar({ gradeMap, total }) {
+  const maxVal = Math.max(...GRADE_ORDER.map((g) => gradeMap[g] || 0), 1);
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 100, padding: "0 2px" }}>
+      {GRADE_ORDER.map((g) => {
+        const count = gradeMap[g] || 0;
+        const barH = Math.max(Math.round((count / maxVal) * 84), count ? 4 : 2);
+        return (
+          <div key={g} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: count ? GRADE_COLORS[g] : "var(--muteder)" }}>
+              {count || ""}
+            </span>
+            <div style={{
+              width: "100%", height: barH,
+              background: GRADE_COLORS[g],
+              borderRadius: "4px 4px 0 0",
+              opacity: count ? 1 : 0.15,
+              transition: "height .3s",
+            }} />
+            <span style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{g}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Dashboard ──────────────────────────────────────────────────────────────
+function Dashboard() {
+  const { setView } = useApp();
+  const today = getLocalDateStr();
+  const todayLabel = getLocalDateLabel();
+
+  // API calls
+  const list      = useApi(() => api.listStudents(MY_CLASS), []);
+  const exams     = useApi(() => api.getExams(), []);
+  const todayAtt  = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, today), [today]);
+
+  const students  = list.data || [];
+  const examList  = exams.data || [];
   const latestExam = examList.length ? examList[examList.length - 1] : null;
+
   const results = useApi(
-    () => (latestExam ? api.getClassResults(latestExam.id, MY_CLASS_ID) : Promise.resolve([])),
+    () => latestExam ? api.getClassResults(latestExam.id, MY_CLASS_ID) : Promise.resolve([]),
     [latestExam && latestExam.id]
   );
-  const attention = (results.data || []).filter((r) => r.fails > 0); // failed ≥1 subject, sorted by fails
 
-  // chart buckets from real data
+  // ── today's attendance
+  const todayRows      = todayAtt.data || [];
+  const attMarkedToday = todayRows.length > 0 && todayRows.some((r) => r.status);
+  const presentToday   = todayRows.filter((r) => r.status === "present").length;
+  const absentToday    = todayRows.filter((r) => r.status === "absent").length;
+  const todayPct       = todayRows.length ? Math.round((presentToday / todayRows.length) * 100) : 0;
+
+  // ── monthly attendance from student records
+  const strength = students.length;
+  const avgAtt   = strength
+    ? Math.round(students.reduce((a, s) => a + Number(s.att), 0) / strength)
+    : 0;
   const attBands = [
-    { label: "≥ 90%", value: students.filter((s) => Number(s.att) >= 90).length, color: "#4ade80" },
-    { label: "75–89%", value: students.filter((s) => Number(s.att) >= 75 && Number(s.att) < 90).length, color: "#ffb454" },
-    { label: "< 75%", value: students.filter((s) => Number(s.att) < 75).length, color: "#ff5c7c" },
+    { label: "≥ 90%",  value: students.filter((s) => Number(s.att) >= 90).length,                              color: "#4ade80" },
+    { label: "75–89%", value: students.filter((s) => Number(s.att) >= 75 && Number(s.att) < 90).length,        color: "#ffb454" },
+    { label: "< 75%",  value: students.filter((s) => Number(s.att) < 75).length,                               color: "#ff5c7c" },
   ];
+
+  // ── exam results
+  const allResults  = results.data || [];
+  const failStudents = allResults.filter((r) => r.fails > 0);
+  const gradeMap    = {};
+  allResults.forEach((r) => {
+    const g = config.academics.grade(Number(r.avg));
+    gradeMap[g] = (gradeMap[g] || 0) + 1;
+  });
+  const excellentCount = (gradeMap["A+"] || 0) + (gradeMap["A"] || 0);
+
+  // ── fee donut
   const feeBands = [
-    { label: "Paid", value: students.filter((s) => s.fee === "Paid").length, color: "#4ade80" },
+    { label: "Paid",    value: students.filter((s) => s.fee === "Paid").length,    color: "#4ade80" },
     { label: "Partial", value: students.filter((s) => s.fee === "Partial").length, color: "#ffb454" },
     { label: "Pending", value: students.filter((s) => s.fee === "Pending").length, color: "#ff5c7c" },
   ];
-  const genderBands = [
-    { label: "Boys", value: students.filter((s) => s.gender === "male").length, color: "#5aa9ff" },
-    { label: "Girls", value: students.filter((s) => s.gender === "female").length, color: "#9b7bff" },
-    { label: "Not set", value: students.filter((s) => !s.gender).length, color: "#6b71a8" },
-  ];
+
+  // ── at-risk students (low attendance OR failed subjects)
+  const chronicIds = new Set(students.filter((s) => Number(s.att) < 75).map((s) => s.id));
+  const failIds    = new Set(failStudents.map((r) => r.studentId));
+  const atRisk = students
+    .filter((s) => chronicIds.has(s.id) || failIds.has(s.id))
+    .map((s) => {
+      const res = allResults.find((r) => r.studentId === s.id);
+      return { ...s, fails: res ? res.fails : 0, avg: res ? res.avg : null };
+    })
+    .sort((a, b) => {
+      // Sort: both risks first, then single
+      const aScore = (chronicIds.has(a.id) ? 2 : 0) + (a.fails > 0 ? 1 : 0);
+      const bScore = (chronicIds.has(b.id) ? 2 : 0) + (b.fails > 0 ? 1 : 0);
+      return bScore - aScore;
+    });
+
+  // ── open exams
+  const openExams = examList.filter((e) => e.status === "open");
+
+  // ── absentees today (for the mini list)
+  const absentStudentIds = new Set(todayRows.filter((r) => r.status === "absent").map((r) => r.studentId));
+  const absentDetails = students.filter((s) => absentStudentIds.has(s.id));
 
   return (
     <>
-      <PageHead title={`My Class — ${MY_CLASS}`} sub="Overview" right={<span className="pill">🟢 Tue, 23 Jun 2026</span>} />
-      <div className="grid g4">
-        <Stat label="Class strength" value={strength} delta={MY_CLASS} />
-        <Stat label="Avg attendance" value={avgAtt + "%"} delta="term" dir={avgAtt >= 85 ? "up" : "down"} />
-        <Stat label="Need attention" value={attention.length} delta="failed ≥1 subject" dir={attention.length ? "down" : "up"} />
-        <Stat label="Latest exam" value={latestExam ? latestExam.name : "—"} delta="results" />
+      {/* ── Morning banner ─────────────────────────────────────────────── */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(124,92,255,0.12) 0%, rgba(52,209,191,0.08) 100%)",
+        border: "1px solid rgba(124,92,255,0.25)",
+        borderRadius: 16, padding: "16px 22px", marginBottom: 18,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        flexWrap: "wrap", gap: 12,
+      }}>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>{todayLabel}</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>📚 {MY_CLASS} — Class Teacher Dashboard</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
+            {strength} students · {config.school.academicYear}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {attMarkedToday ? (
+            <div style={{ textAlign: "right" }}>
+              <span className="badge b-good" style={{ fontSize: 12 }}>✓ Attendance marked</span>
+              <div className="mini" style={{ marginTop: 4 }}>
+                {presentToday} present · {absentToday} absent · {todayPct}%
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "right" }}>
+              <span className="badge b-bad" style={{ fontSize: 12 }}>⚠ Not marked today</span>
+              <div
+                className="mini link"
+                style={{ marginTop: 4, color: "var(--warn)", cursor: "pointer" }}
+                onClick={() => setView("attendance")}
+              >
+                Mark attendance now →
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="grid g3" style={{ marginTop: 15 }}>
-        <Card title="Attendance">
-          <Loading state={list}><Donut segments={attBands} centerLabel={avgAtt + "%"} centerSub="avg" /></Loading>
-        </Card>
-        <Card title="Fees">
-          <Loading state={list}><Donut segments={feeBands} centerLabel={feeBands[0].value} centerSub="paid" /></Loading>
-        </Card>
-        <Card title="Gender ratio">
-          <Loading state={list}><Donut segments={genderBands} centerLabel={strength} centerSub="students" /></Loading>
-        </Card>
+      {/* ── Open exam alert ───────────────────────────────────────────────── */}
+      {openExams.length > 0 && (
+        <div style={{
+          background: "rgba(255,180,84,0.08)", border: "1px solid rgba(255,180,84,0.35)",
+          borderRadius: 12, padding: "10px 18px", marginBottom: 18,
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ fontSize: 16 }}>📝</span>
+          <div style={{ flex: 1, fontSize: 13 }}>
+            Marks entry open for: <b>{openExams.map((e) => e.name).join(", ")}</b>
+          </div>
+          <span
+            className="badge b-warn"
+            style={{ cursor: "pointer" }}
+            onClick={() => setView("results")}
+          >
+            Enter marks →
+          </span>
+        </div>
+      )}
+
+      {/* ── Stat cards ───────────────────────────────────────────────────── */}
+      <div className="grid g4" style={{ marginBottom: 18 }}>
+        <Stat label="Class Strength" value={strength} delta={MY_CLASS} />
+        <Stat
+          label="Today's Attendance"
+          value={attMarkedToday ? `${presentToday}/${strength}` : "—"}
+          delta={attMarkedToday ? `${todayPct}% present today` : "not marked yet"}
+          dir={attMarkedToday ? (todayPct >= 85 ? "up" : "down") : "flat"}
+        />
+        <Stat
+          label="Monthly Avg Att."
+          value={avgAtt + "%"}
+          delta="this term"
+          dir={avgAtt >= 85 ? "up" : "down"}
+        />
+        <Stat
+          label="At-Risk Students"
+          value={atRisk.length}
+          delta="low att. or failed"
+          dir={atRisk.length > 0 ? "down" : "up"}
+        />
       </div>
 
-      <Card title={<>Needs attention <span className="mini">{latestExam ? `by ${latestExam.name} — most failed subjects first` : ""}</span></>}>
-        <Loading state={results}>
-          {attention.length === 0
-            ? <div className="mini">No failures in the latest exam. 🎉</div>
-            : (
-              <table>
-                <thead><tr>
-                  <th style={{ width: 60 }}>Roll</th>
-                  <th>Student</th>
-                  <th style={{ width: 130, whiteSpace: "nowrap", textAlign: "right" }}>Failed</th>
-                  <th style={{ width: 90, textAlign: "right" }}>Average</th>
-                </tr></thead>
-                <tbody>
-                  {attention.map((r) => (
-                    <tr key={r.studentId}>
-                      <td>{r.roll}</td>
-                      <td><b>{r.name}</b></td>
-                      <td style={{ textAlign: "right" }}><span className="badge b-bad">{r.fails} failed</span></td>
-                      <td style={{ textAlign: "right" }}>{r.avg == null ? "—" : r.avg + "%"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* ── Charts row ───────────────────────────────────────────────────── */}
+      <div className="grid g3" style={{ marginBottom: 18 }}>
+
+        {/* Attendance health donut */}
+        <Card title="Attendance Health">
+          <Loading state={list}>
+            <Donut segments={attBands} centerLabel={avgAtt + "%"} centerSub="monthly avg" />
+            {attBands[2].value > 0 && (
+              <div className="mini" style={{ marginTop: 10, color: "var(--bad)" }}>
+                ⚠ {attBands[2].value} student{attBands[2].value > 1 ? "s" : ""} below 75%
+              </div>
             )}
+          </Loading>
+        </Card>
+
+        {/* Grade distribution */}
+        <Card title={
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Grade Distribution
+            {latestExam && (
+              <span className="mini" style={{ fontWeight: 400 }}>{latestExam.name}</span>
+            )}
+          </span>
+        }>
+          <Loading state={results}>
+            {allResults.length === 0 ? (
+              <div className="mini" style={{ padding: 8 }}>No exam results yet.</div>
+            ) : (
+              <GradeBar gradeMap={gradeMap} total={allResults.length} />
+            )}
+            {allResults.length > 0 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                <span className="badge b-bad">{failStudents.length} failed</span>
+                <span className="badge b-good">{excellentCount} A / A+</span>
+                <span className="badge" style={{ background: "rgba(90,169,255,0.15)", color: "var(--info)" }}>
+                  {allResults.length} submitted
+                </span>
+              </div>
+            )}
+          </Loading>
+        </Card>
+
+        {/* Fee status */}
+        <Card title="Fee Collection">
+          <Loading state={list}>
+            <Donut
+              segments={feeBands}
+              centerLabel={feeBands[0].value}
+              centerSub="paid"
+            />
+            {feeBands[2].value > 0 && (
+              <div className="mini" style={{ marginTop: 10, color: "var(--bad)" }}>
+                ⚠ {feeBands[2].value} student{feeBands[2].value > 1 ? "s" : ""} fee pending
+              </div>
+            )}
+          </Loading>
+        </Card>
+      </div>
+
+      {/* ── Absentees today ──────────────────────────────────────────────── */}
+      {attMarkedToday && absentDetails.length > 0 && (
+        <Card
+          title={
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              🔴 Absent Today
+              <span className="mini" style={{ fontWeight: 400 }}>call parents if unplanned</span>
+            </span>
+          }
+          style={{ marginBottom: 18 }}
+        >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "6px 0" }}>
+            {absentDetails.map((s) => (
+              <div key={s.id} style={{
+                background: "rgba(255,92,124,0.1)", border: "1px solid rgba(255,92,124,0.3)",
+                borderRadius: 10, padding: "8px 14px", fontSize: 13,
+              }}>
+                <div style={{ fontWeight: 600 }}>{s.name}</div>
+                <div className="mini">Roll {s.roll} · {s.phone || "no phone"}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── At-risk students table ───────────────────────────────────────── */}
+      <Card title={
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          🚨 Students Needing Attention
+          <span className="mini" style={{ fontWeight: 400 }}>
+            {atRisk.length > 0
+              ? `${atRisk.length} student${atRisk.length > 1 ? "s" : ""} flagged`
+              : "all clear"}
+          </span>
+        </span>
+      }>
+        <Loading state={list}>
+          {atRisk.length === 0 ? (
+            <div style={{ padding: "14px 6px", color: "var(--good)", fontSize: 13 }}>
+              🎉 No at-risk students — great work!
+            </div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th style={{ textAlign: "center" }}>Attendance</th>
+                  <th style={{ textAlign: "center" }}>Fails</th>
+                  <th style={{ textAlign: "center" }}>Avg Mark</th>
+                  <th>Guardian</th>
+                  <th>Phone</th>
+                  <th>Flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {atRisk.map((s) => (
+                  <tr key={s.id}>
+                    <td><b>{s.name}</b><span className="mini" style={{ marginLeft: 6, color: "var(--muted)" }}>Roll {s.roll}</span></td>
+                    <td style={{ textAlign: "center" }}>
+                      <span className={`badge ${Number(s.att) < 75 ? "b-bad" : "b-warn"}`}>
+                        {s.att}%
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {s.fails > 0
+                        ? <span className="badge b-bad">{s.fails} subject{s.fails > 1 ? "s" : ""}</span>
+                        : <span className="badge b-good">Pass</span>}
+                    </td>
+                    <td style={{ textAlign: "center", color: s.avg != null && s.avg < 50 ? "var(--bad)" : "inherit" }}>
+                      {s.avg != null ? s.avg + "%" : "—"}
+                    </td>
+                    <td>{s.guardian || "—"}</td>
+                    <td className="mini" style={{ color: "var(--muted)" }}>{s.phone || "—"}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {Number(s.att) < 75 && <span className="badge b-bad" style={{ fontSize: 10 }}>Low att.</span>}
+                        {s.fails > 0   && <span className="badge b-bad" style={{ fontSize: 10 }}>Exam fail</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </Loading>
       </Card>
     </>
   );
 }
 
-// Attendance taking — date-wise, saved to the database.
+// ─── Attendance Entry ────────────────────────────────────────────────────────
 function AttendanceEntry() {
-  const [date, setDate] = useState("2026-06-23");
+  const [date, setDate] = useState(getLocalDateStr());
   const day = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, date), [date]);
   const rows = day.data || [];
   const [marks, setMarks] = useState({});        // studentId -> 'present'|'absent'
@@ -150,6 +424,7 @@ function AttendanceEntry() {
   );
 }
 
+// ─── Students ────────────────────────────────────────────────────────────────
 function Students() {
   const list = useApi(() => api.listStudents(MY_CLASS), []);
   const [form, setForm] = useState(null);      // {student} | {student:null} when open
@@ -201,6 +476,7 @@ function Students() {
   );
 }
 
+// ─── Results ─────────────────────────────────────────────────────────────────
 function Results() {
   const [mode, setMode] = useState("enter");
   const tabs = [
@@ -341,6 +617,7 @@ function CreateExam() {
   );
 }
 
+// ─── Notes ────────────────────────────────────────────────────────────────────
 function Notes() {
   const [text, setText] = useState("");
   const msgs = useApi(() => api.getMessages(), []);
@@ -365,6 +642,7 @@ function Notes() {
   );
 }
 
+// ─── Messages ─────────────────────────────────────────────────────────────────
 function Messages() {
   const msgs = useApi(() => api.getMessages(), []);
   const [replies, setReplies] = useState({});
@@ -402,10 +680,10 @@ function Messages() {
 }
 
 export const teacherNav = [
-  { key: "dashboard", label: "My Class",        icon: "🏠", Component: Dashboard },
-  { key: "attendance", label: "Attendance",     icon: "🗓️", Component: AttendanceEntry },
-  { key: "students", label: "Students",         icon: "🎓", Component: Students },
-  { key: "results", label: "Exam Results",      icon: "📊", Component: Results },
-  { key: "notes", label: "Notes to Parent",     icon: "📝", Component: Notes },
-  { key: "messages", label: "Messages",         icon: "💬", Component: Messages },
+  { key: "dashboard",  label: "My Class",        icon: "🏠", Component: Dashboard },
+  { key: "attendance", label: "Attendance",       icon: "🗓️", Component: AttendanceEntry },
+  { key: "students",   label: "Students",         icon: "🎓", Component: Students },
+  { key: "results",    label: "Exam Results",     icon: "📊", Component: Results },
+  { key: "notes",      label: "Notes to Parent",  icon: "📝", Component: Notes },
+  { key: "messages",   label: "Messages",         icon: "💬", Component: Messages },
 ];
