@@ -13,9 +13,10 @@ apt-get update -y
 apt-get upgrade -y
 
 echo "=== [2/5] Installing system packages ==="
-apt-get install -y git nginx mysql-client curl
+apt-get install -y git nginx mysql-client curl awscli
 
 echo "=== [3/5] Installing Node.js 20 ==="
+apt-get remove -y nodejs npm 2>/dev/null || true
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
