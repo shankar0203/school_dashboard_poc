@@ -1,45 +1,402 @@
-// SCHOOL ADMIN role screens
-// Office staff — fee collection, student records, enrollment.
-import React from "react";
-import { Card, PageHead } from "../components/ui.jsx";
+// SCHOOL ADMIN role screens — office staff managing fees, enrollment.
+import React, { useState, Fragment } from "react";
+import config from "../config/appConfig.js";
+import * as api from "../services/dataService.js";
+import { useApi } from "../hooks/useApi.js";
+import { Card, Stat, PageHead, Tabs, FeeBadge, Loading, Donut } from "../components/ui.jsx";
+import StudentForm from "../components/StudentForm.jsx";
+import StudentProfile from "../components/StudentProfile.jsx";
 
+const { classes } = config.academics;
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+function getLocalDateLabel() {
+  return new Date().toLocaleDateString("en-IN", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
 function Dashboard() {
+  // Use class 8-A as demo fee data (seeded)
+  const list = useApi(() => api.listStudents("8-A"), []);
+  const students = list.data || [];
+
+  const paid     = students.filter((s) => s.fee === "Paid").length;
+  const partial  = students.filter((s) => s.fee === "Partial").length;
+  const pending  = students.filter((s) => s.fee === "Pending").length;
+  const total    = students.length;
+  const collectPct = total ? Math.round((paid / total) * 100) : 0;
+
+  const feeBands = [
+    { label: "Paid",    value: paid,    color: "#4ade80" },
+    { label: "Partial", value: partial, color: "#ffb454" },
+    { label: "Pending", value: pending, color: "#ff5c7c" },
+  ];
+
+  // Students needing follow-up (Pending or Partial)
+  const followUp = students.filter((s) => s.fee !== "Paid");
+
   return (
-    <div>
-      <PageHead title="School Admin" sub="Office management overview" />
-      <Card>
-        <p style={{ color: "var(--muted)", padding: "20px 0" }}>
-          Admin dashboard — coming soon. Will show fee collection summary, pending payments, and student enrollment stats.
-        </p>
-      </Card>
-    </div>
+    <>
+      {/* ── Banner ────────────────────────────────────────────────────────── */}
+      <div style={{
+        background: "linear-gradient(135deg, rgba(255,92,124,0.10) 0%, rgba(255,180,84,0.08) 100%)",
+        border: "1px solid rgba(255,92,124,0.25)",
+        borderRadius: 16, padding: "16px 22px", marginBottom: 18,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        flexWrap: "wrap", gap: 12,
+      }}>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>{getLocalDateLabel()}</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>🏢 {config.school.name} — Admin Office</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
+            AY {config.school.academicYear} · Fee management & enrollment
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          {pending > 0 ? (
+            <>
+              <span className="badge b-bad">⚠ {pending} fee{pending > 1 ? "s" : ""} pending</span>
+              <div className="mini" style={{ marginTop: 4, color: "var(--warn)" }}>
+                {partial > 0 ? `+ ${partial} partial` : ""}
+              </div>
+            </>
+          ) : (
+            <span className="badge b-good">✓ All fees collected (class 8-A)</span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Stat cards ───────────────────────────────────────────────────── */}
+      <div className="grid g4" style={{ marginBottom: 18 }}>
+        <Stat label="Students" value={total} delta="class 8-A" />
+        <Stat label="Fully Paid" value={paid} delta="students" dir="up" />
+        <Stat label="Pending / Partial" value={pending + partial} delta="needs follow-up" dir={(pending + partial) > 0 ? "down" : "up"} />
+        <Stat label="Collection Rate" value={collectPct + "%"} delta="class 8-A" dir={collectPct >= 80 ? "up" : "down"} />
+      </div>
+
+      {/* ── Charts row ───────────────────────────────────────────────────── */}
+      <div className="grid g2" style={{ marginBottom: 18 }}>
+        <Card title="Fee Collection Status — Class 8-A">
+          <Loading state={list}>
+            <Donut segments={feeBands} centerLabel={paid} centerSub="paid" />
+          </Loading>
+        </Card>
+
+        {/* Fee status bars by percentage */}
+        <Card title="Collection Breakdown">
+          <Loading state={list}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "4px 0" }}>
+              {feeBands.map((b) => (
+                <div key={b.label}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: b.color }} />
+                      {b.label}
+                    </span>
+                    <b style={{ color: b.color }}>{b.value} students</b>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: "var(--panel2)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: total ? `${(b.value / total) * 100}%` : "0%", background: b.color, borderRadius: 4, transition: "width .4s" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Loading>
+        </Card>
+      </div>
+
+      {/* ── Fee follow-up list ───────────────────────────────────────────── */}
+      {followUp.length > 0 && (
+        <Card title={
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            📞 Follow-up Required
+            <span className="mini" style={{ fontWeight: 400 }}>{followUp.length} student{followUp.length > 1 ? "s" : ""}</span>
+          </span>
+        }>
+          <Loading state={list}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Roll</th>
+                  <th>Student</th>
+                  <th>Guardian</th>
+                  <th>Phone</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {followUp.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.roll}</td>
+                    <td><b>{s.name}</b></td>
+                    <td>{s.guardian || "—"}</td>
+                    <td className="mini">{s.phone || "—"}</td>
+                    <td><FeeBadge status={s.fee} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Loading>
+        </Card>
+      )}
+    </>
   );
 }
 
+// ─── Fees ─────────────────────────────────────────────────────────────────────
 function Fees() {
+  const [cls, setCls]     = useState("8-A");
+  const [selectedId, setSelectedId] = useState(null);
+  const list = useApi(() => api.listStudents(cls), [cls]);
+  const students = list.data || [];
+
+  const paid    = students.filter((s) => s.fee === "Paid").length;
+  const pending = students.filter((s) => s.fee !== "Paid").length;
+
   return (
-    <div>
-      <PageHead title="Fee Management" sub="Collect and track fee payments" />
-      <Card><p style={{ color: "var(--muted)", padding: "20px 0" }}>Fee management — coming soon.</p></Card>
-    </div>
+    <>
+      <PageHead
+        title="Fee Management"
+        sub="Track and collect student fee payments · class-wise"
+        right={<span className="pill">{paid} paid · {pending} pending</span>}
+      />
+      <Tabs items={classes.map((c) => ({ id: c, name: c }))} value={cls} onChange={(c) => { setCls(c); setSelectedId(null); }} />
+
+      <div className="grid g4" style={{ marginBottom: 14 }}>
+        <Stat label="Students"   value={students.length} delta={cls} />
+        <Stat label="Paid"       value={paid}    delta="fully paid" dir="up" />
+        <Stat label="Pending"    value={students.filter((s) => s.fee === "Pending").length}  delta="not paid" dir="down" />
+        <Stat label="Partial"    value={students.filter((s) => s.fee === "Partial").length}  delta="partial" dir="down" />
+      </div>
+
+      <Card>
+        <Loading state={list}>
+          {students.length === 0 ? (
+            <div className="mini">No students in this class.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Roll</th>
+                  <th>Student</th>
+                  <th>Guardian</th>
+                  <th>Phone</th>
+                  <th>Fee Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.roll}</td>
+                    <td><b>{s.name}</b></td>
+                    <td>{s.guardian || "—"}</td>
+                    <td className="mini">{s.phone || "—"}</td>
+                    <td><FeeBadge status={s.fee} /></td>
+                    <td>
+                      <span
+                        className="mini link"
+                        onClick={() => setSelectedId(selectedId === s.id ? null : s.id)}
+                      >
+                        {selectedId === s.id ? "Close ▲" : "Details ▼"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Loading>
+      </Card>
+
+      {selectedId && <FeeDetail studentId={selectedId} onClose={() => setSelectedId(null)} />}
+    </>
   );
 }
 
+// Inline fee detail + payment recording
+function FeeDetail({ studentId, onClose }) {
+  const fees   = useApi(() => api.getFees(studentId), [studentId]);
+  const f      = fees.data || { total: 0, paid: 0, terms: [] };
+  const due    = f.total - f.paid;
+  const [paying, setPaying] = useState(null);
+  const [amount, setAmount] = useState("");
+
+  const recordPayment = async (feeId) => {
+    const amt = parseFloat(amount);
+    if (!amt || isNaN(amt) || amt <= 0) { alert("Enter a valid amount"); return; }
+    await api.recordFeePayment(feeId, amt);
+    setAmount(""); setPaying(null); fees.reload();
+    alert(`Payment of ₹${amt} recorded.`);
+  };
+
+  return (
+    <Card title={
+      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        💳 Fee Details
+        <button className="btn sm ghost" onClick={onClose} style={{ marginLeft: "auto" }}>Close</button>
+      </span>
+    }>
+      <Loading state={fees}>
+        <div className="grid g3" style={{ marginBottom: 14 }}>
+          <Stat label="Total" value={config.app.currency + Number(f.total).toLocaleString("en-IN")} delta="for year" />
+          <Stat label="Paid"  value={config.app.currency + Number(f.paid).toLocaleString("en-IN")}  delta="received" dir="up" />
+          <Stat label="Due"   value={config.app.currency + Number(due).toLocaleString("en-IN")}      delta="pending"  dir={due > 0 ? "down" : "up"} />
+        </div>
+        <table>
+          <thead>
+            <tr><th>Item</th><th>Amount</th><th>Paid</th><th>Status</th><th>Due date</th><th></th></tr>
+          </thead>
+          <tbody>
+            {f.terms.map((t, i) => {
+              const st = Number(t.paid) >= Number(t.due) ? "Paid" : Number(t.paid) > 0 ? "Partial" : "Pending";
+              return (
+                <Fragment key={i}>
+                  <tr>
+                    <td>{t.term}</td>
+                    <td>{config.app.currency}{Number(t.due).toLocaleString("en-IN")}</td>
+                    <td>{config.app.currency}{Number(t.paid).toLocaleString("en-IN")}</td>
+                    <td><FeeBadge status={st} /></td>
+                    <td className="mini">{t.date}</td>
+                    <td>
+                      {st !== "Paid" && (
+                        <button className="btn sm" onClick={() => setPaying(paying === t.id ? null : t.id)}>
+                          Collect
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {paying === t.id && (
+                    <tr>
+                      <td colSpan={6}>
+                        <div style={{ display: "flex", gap: 8, padding: "8px 0", alignItems: "center" }}>
+                          <span className="mini">Amount: </span>
+                          <input
+                            type="number" min="1"
+                            value={amount} onChange={(e) => setAmount(e.target.value)}
+                            placeholder="Enter amount"
+                            style={{ width: 140, background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)", borderRadius: 7, padding: "6px 9px" }}
+                          />
+                          <button className="btn sm" onClick={() => recordPayment(t.id)}>Record</button>
+                          <button className="btn sm ghost" onClick={() => setPaying(null)}>Cancel</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </Loading>
+    </Card>
+  );
+}
+
+// ─── Students ─────────────────────────────────────────────────────────────────
 function Students() {
+  const [cls, setCls]     = useState("8-A");
+  const list = useApi(() => api.listStudents(cls), [cls]);
+  const [form, setForm]   = useState(null);
+  const [profileId, setProfileId] = useState(null);
+  const done = () => { setForm(null); list.reload(); };
+
   return (
-    <div>
-      <PageHead title="Students" sub="Student records and enrollment" />
-      <Card><p style={{ color: "var(--muted)", padding: "20px 0" }}>Student records — coming soon.</p></Card>
-    </div>
+    <>
+      <PageHead
+        title="Student Records"
+        sub="Enrollment management · all classes"
+        right={<button className="btn" onClick={() => setForm({ student: null })}>＋ Enroll student</button>}
+      />
+      <Tabs items={classes.map((c) => ({ id: c, name: c }))} value={cls} onChange={setCls} />
+      <Card title={<>Class {cls} — {(list.data || []).length} students</>}>
+        <Loading state={list}>
+          <table>
+            <thead><tr><th>Roll</th><th>Name</th><th>Attendance</th><th>Guardian</th><th>Phone</th><th>Fee</th><th></th></tr></thead>
+            <tbody>
+              {(list.data || []).map((s) => (
+                <tr key={s.id}>
+                  <td>{s.roll}</td>
+                  <td><b style={{ cursor: "pointer" }} onClick={() => setProfileId(s.id)}>{s.name}</b></td>
+                  <td><span className={`badge ${Number(s.att) >= 85 ? "b-good" : Number(s.att) >= 75 ? "b-warn" : "b-bad"}`}>{s.att}%</span></td>
+                  <td>{s.guardian}</td>
+                  <td className="mini">{s.phone}</td>
+                  <td><FeeBadge status={s.fee} /></td>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <span className="mini link" onClick={() => setProfileId(s.id)}>View</span>
+                    {" · "}
+                    <span className="mini link" onClick={() => setForm({ student: s })}>Edit</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Loading>
+      </Card>
+      {form && (
+        <StudentForm student={form.student} classes={classes}
+          lockedClass={form.student ? null : cls}
+          onClose={() => setForm(null)} onSaved={done} />
+      )}
+      {profileId && (
+        <StudentProfile id={profileId} onClose={() => setProfileId(null)}
+          onEdit={(s) => { setProfileId(null); setForm({ student: s }); }} />
+      )}
+    </>
   );
 }
 
+// ─── Reports ──────────────────────────────────────────────────────────────────
 function Reports() {
+  const exams = useApi(() => api.getExams(), []);
+  const list  = useApi(() => api.listStudents("8-A"), []);
+  const students = list.data || [];
+
+  const paid    = students.filter((s) => s.fee === "Paid").length;
+  const partial = students.filter((s) => s.fee === "Partial").length;
+  const pending = students.filter((s) => s.fee === "Pending").length;
+  const total   = students.length;
+
   return (
-    <div>
-      <PageHead title="Reports" sub="Fee and enrollment reports" />
-      <Card><p style={{ color: "var(--muted)", padding: "20px 0" }}>Reports — coming soon.</p></Card>
-    </div>
+    <>
+      <PageHead title="Reports" sub="Fee and enrollment summary" />
+      <div className="grid g2">
+        <Card title="📊 Fee Summary — Class 8-A">
+          <Loading state={list}>
+            <table>
+              <tbody>
+                <tr><td>Total students</td><td><b>{total}</b></td></tr>
+                <tr><td>Fully paid</td><td><b style={{ color: "#4ade80" }}>{paid}</b></td></tr>
+                <tr><td>Partial</td><td><b style={{ color: "#ffb454" }}>{partial}</b></td></tr>
+                <tr><td>Pending</td><td><b style={{ color: "#ff5c7c" }}>{pending}</b></td></tr>
+                <tr><td>Collection rate</td><td><b>{total ? Math.round((paid / total) * 100) : 0}%</b></td></tr>
+              </tbody>
+            </table>
+          </Loading>
+        </Card>
+        <Card title="📋 Exams on Record">
+          <Loading state={exams}>
+            {(exams.data || []).length === 0 ? (
+              <div className="mini">No exams created yet.</div>
+            ) : (
+              <table>
+                <thead><tr><th>Exam</th><th>Status</th></tr></thead>
+                <tbody>
+                  {(exams.data || []).map((e) => (
+                    <tr key={e.id}>
+                      <td><b>{e.name}</b></td>
+                      <td><span className={`badge ${e.status === "locked" ? "b-good" : "b-warn"}`}>{e.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Loading>
+        </Card>
+      </div>
+    </>
   );
 }
 
