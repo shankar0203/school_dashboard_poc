@@ -36,7 +36,7 @@ router.get("/", h(async (req, res) => {
                 FROM fees GROUP BY student_id) f ON f.student_id = s.id
      WHERE ${where.join(" AND ")}
      GROUP BY s.id
-     ORDER BY s.name`,
+     ORDER BY s.roll_no ASC`,
     args
   );
   res.json(rows);

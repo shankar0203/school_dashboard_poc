@@ -92,13 +92,7 @@ INSERT INTO attendance (school_id, student_id, class_id, att_date, status, marke
   (1,1,5,'2026-06-17','present',2),(1,1,5,'2026-06-18','present',2),
   (1,1,5,'2026-06-19','absent', 2),(1,1,5,'2026-06-22','present',2),
   (1,1,5,'2026-06-23','present',2);
--- the rest of 8-A for today (23rd): Karthik & Irfan absent, others present
-INSERT INTO attendance (school_id, student_id, class_id, att_date, status, marked_by) VALUES
-  (1,2,5,'2026-06-23','present',2),
-  (1,3,5,'2026-06-23','present',2),
-  (1,4,5,'2026-06-23','absent', 2),
-  (1,5,5,'2026-06-23','absent', 2),
-  (1,6,5,'2026-06-23','present',2);
+-- attendance for students 2-35 is in seed_extra.sql (full June 2026)
 
 -- messages -----------------------------------------------------------------
 -- principal broadcast to students, teacher note (shows on student page)
