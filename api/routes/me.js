@@ -17,25 +17,34 @@ router.get("/", h(async (req, res) => {
   const { sub, email } = req.user;
   const { role, schoolId } = req;
 
+  // Normalise the login email for matching (case + whitespace insensitive).
+  const loginEmail = (email || "").trim().toLowerCase();
+
+  console.log(`[/me] sub=${sub} email=${email} loginEmail=${loginEmail} role=${role} schoolId=${schoolId}`);
+
   // 1. Fast path — look up by cognito_sub (set on first login)
   let [[u]] = await db.query(
     "SELECT id, name, email, phone FROM users WHERE cognito_sub = ? AND school_id = ?",
     [sub, schoolId]
   );
+  console.log(`[/me] sub lookup → ${u ? `found id=${u.id}` : "not found"}`);
 
   // 2. Fallback — admin pre-linked by email before the user ever logged in.
-  //    Match by email, then store the sub so the next login hits the fast path.
-  if (!u && email) {
+  //    Match case-insensitively (stored emails aren't guaranteed lowercase),
+  //    then store the sub so the next login hits the fast path.
+  if (!u && loginEmail) {
     [[u]] = await db.query(
-      "SELECT id, name, email, phone FROM users WHERE email = ? AND school_id = ?",
-      [email.toLowerCase(), schoolId]
+      "SELECT id, name, email, phone FROM users WHERE LOWER(email) = ? AND school_id = ?",
+      [loginEmail, schoolId]
     );
+    console.log(`[/me] email lookup (${loginEmail}) → ${u ? `found id=${u.id}` : "not found"}`);
     if (u) {
       await db.query("UPDATE users SET cognito_sub = ? WHERE id = ?", [sub, u.id]);
     }
   }
 
   if (!u) {
+    console.log(`[/me] → linked: false`);
     // User is authenticated with Cognito but not yet linked in the DB.
     // Return minimal context so the frontend can prompt the admin to link them.
     return res.json({ role, schoolId, linked: false, cognitoEmail: email });
@@ -108,7 +117,7 @@ router.post("/link", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, res) => 
   // 1. Find or create the users row for this Cognito email.
   //    Priority: match by email OR match by the student's existing user_id.
   let [[u]] = await db.query(
-    "SELECT u.id FROM users u WHERE u.email = ? AND u.school_id = ?",
+    "SELECT u.id FROM users u WHERE LOWER(u.email) = ? AND u.school_id = ?",
     [cleanEmail, req.schoolId]
   );
 
@@ -136,12 +145,13 @@ router.post("/link", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, res) => 
   }
 
   // 2. Link the student record to this users row
-  await db.query(
+  const [upd] = await db.query(
     "UPDATE students SET user_id = ? WHERE id = ? AND school_id = ?",
     [u.id, studentId, req.schoolId]
   );
+  console.log(`[/me/link] email=${cleanEmail} userId=${u.id} studentId=${studentId} affectedRows=${upd.affectedRows}`);
 
-  res.json({ ok: true, userId: u.id, studentId });
+  res.json({ ok: true, userId: u.id, studentId, affectedRows: upd.affectedRows });
 }));
 
 // POST /me/link-teacher  — assign a teacher user to a class
@@ -154,7 +164,7 @@ router.post("/link-teacher", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, 
 
   // Find existing user row or check if the class already has a teacher
   let [[u]] = await db.query(
-    "SELECT id FROM users WHERE email = ? AND school_id = ?",
+    "SELECT id FROM users WHERE LOWER(email) = ? AND school_id = ?",
     [cleanEmail, req.schoolId]
   );
   if (!u) {
@@ -187,12 +197,18 @@ router.post("/link-teacher", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, 
 // Body: { cognitoSub }  (frontend passes req.user.sub after auth)
 router.post("/set-sub", h(async (req, res) => {
   const { sub } = req.user;
-  const email = (req.user.email || "").toLowerCase();
+  const email = (req.user.email || "").trim().toLowerCase();
   if (!sub) return res.status(400).json({ error: "no sub in token" });
 
+  // Match by sub always, and by email only when we actually have one — an
+  // empty email must never match every row with a blank/NULL email.
+  const clauses = ["cognito_sub = ?"];
+  const args = [sub];
+  if (email) { clauses.push("LOWER(email) = ?"); args.push(email); }
+
   await db.query(
-    "UPDATE users SET cognito_sub = ? WHERE (email = ? OR cognito_sub = ?) AND school_id = ?",
-    [sub, email, sub, req.schoolId]
+    `UPDATE users SET cognito_sub = ? WHERE school_id = ? AND (${clauses.join(" OR ")})`,
+    [sub, req.schoolId, ...args]
   );
   res.json({ ok: true });
 }));
