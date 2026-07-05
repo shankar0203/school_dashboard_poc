@@ -89,3 +89,16 @@ export function signOut() {
   const u = pool.getCurrentUser();
   if (u) u.signOut();
 }
+
+// Current Cognito ID token (JWT), or null. Auto-refreshes via the stored
+// refresh token if the current one has expired. The API verifies this token.
+export function getIdToken() {
+  return new Promise((resolve) => {
+    const u = pool.getCurrentUser();
+    if (!u) return resolve(null);
+    u.getSession((err, session) => {
+      if (err || !session || !session.isValid()) return resolve(null);
+      resolve(session.getIdToken().getJwtToken());
+    });
+  });
+}

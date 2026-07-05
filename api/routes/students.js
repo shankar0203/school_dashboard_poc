@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // columns a client may set on create/update
 const FIELDS = [
@@ -22,6 +23,7 @@ router.get("/", h(async (req, res) => {
   const [rows] = await db.query(
     `SELECT s.id, s.roll_no AS roll, s.name, c.name AS cls,
             s.gender, s.guardian_name AS guardian, s.guardian_phone AS phone,
+            s.notes AS remarks,
             ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS att,
             CASE
               WHEN COALESCE(f.due,0) = 0 THEN 'Paid'
@@ -73,7 +75,7 @@ async function classId(schoolId, cls, classIdRaw) {
 }
 
 // POST /students  { name, class|classId, roll?, + any FIELDS }
-router.post("/", h(async (req, res) => {
+router.post("/", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, res) => {
   const cid = await classId(req.schoolId, req.body.cls || req.body.class, req.body.classId);
   if (!cid) return res.status(400).json({ error: "class or classId required" });
   if (!req.body.name) return res.status(400).json({ error: "name required" });
@@ -95,7 +97,7 @@ router.post("/", h(async (req, res) => {
 }));
 
 // PUT /students/:id  -> update any provided FIELDS (+ class / roll)
-router.put("/:id", h(async (req, res) => {
+router.put("/:id", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, res) => {
   const sets = [];
   const vals = [];
 

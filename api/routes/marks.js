@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // GET /marks?examId=&studentId=  -> [{ subjectId, subject, mark }] (one student)
 router.get("/", h(async (req, res) => {
@@ -15,6 +16,30 @@ router.get("/", h(async (req, res) => {
     [examId, studentId]
   );
   res.json(rows);
+}));
+
+// GET /marks/student/:id  -> all exams with all subjects for one student (for report)
+router.get("/student/:id", h(async (req, res) => {
+  const [rows] = await db.query(
+    `SELECT e.id AS examId, e.name AS examName, e.status,
+            sub.name AS subject, m.mark
+     FROM exams e
+     JOIN exam_subjects es ON es.exam_id = e.id
+     JOIN subjects sub ON sub.id = es.subject_id
+     LEFT JOIN marks m ON m.exam_id = e.id AND m.student_id = ? AND m.subject_id = sub.id
+     WHERE e.school_id = ?
+     ORDER BY e.id, sub.id`,
+    [req.params.id, req.schoolId]
+  );
+
+  // Group by exam
+  const examMap = {};
+  rows.forEach(({ examId, examName, status, subject, mark }) => {
+    if (!examMap[examId]) examMap[examId] = { examId, examName, status, marks: [] };
+    examMap[examId].marks.push({ subject, mark: mark != null ? Number(mark) : null });
+  });
+
+  res.json(Object.values(examMap));
 }));
 
 // GET /marks/grid?examId=&classId=&subjectId=
@@ -36,7 +61,7 @@ router.get("/grid", h(async (req, res) => {
 }));
 
 // POST /marks/bulk  { examId, subjectId, marks:[{studentId, mark}] }  -> upsert
-router.post("/bulk", h(async (req, res) => {
+router.post("/bulk", requireRole(...CAN.ENTER_MARKS), h(async (req, res) => {
   const { examId, subjectId, marks } = req.body;
   if (!examId || !subjectId || !Array.isArray(marks))
     return res.status(400).json({ error: "examId, subjectId, marks[] required" });

@@ -117,7 +117,7 @@ export default function StudentForm({ student, classes, lockedClass, onClose, on
             <label className="fld"><span>Guardian phone</span><input value={f.guardian_phone} onChange={set("guardian_phone")} /></label>
             <label className="fld"><span>Guardian email</span><input value={f.guardian_email} onChange={set("guardian_email")} /></label>
 
-            <label className="fld full"><span>Notes (medical / general)</span><input value={f.notes} onChange={set("notes")} /></label>
+            <label className="fld full"><span>Remarks</span><input value={f.notes} onChange={set("notes")} placeholder="e.g. good student, needs extra attention…" /></label>
           </div>
           {err && <div className="login-err">{err}</div>}
 

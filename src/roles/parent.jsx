@@ -395,10 +395,48 @@ function Notices() {
   );
 }
 
+// ─── Timetable ───────────────────────────────────────────────────────────────
+function Timetable() {
+  const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const todayDay  = DAY_NAMES[new Date().getDay()];
+  const tt        = useApi(() => api.getTimetableDB(CLASS_ID), []);
+  const schedule  = tt.data || [];
+  return (
+    <>
+      <PageHead title={`${CHILD_NAME}'s Timetable`} sub={`Class ${CHILD_CLS} · weekly schedule`} />
+      <Card>
+        <Loading state={tt}>
+          <div className="ttg">
+            <div className="h">Day</div>
+            {["P1","P2","P3","P4","P5","P6"].map((p) => <div className="h" key={p}>{p}</div>)}
+            {schedule.map((row) => (
+              <React.Fragment key={row.day}>
+                <div className="dd" style={{
+                  background: row.day === todayDay ? "rgba(52,209,191,0.15)" : "",
+                  fontWeight: row.day === todayDay ? 700 : 400,
+                }}>
+                  {row.day === todayDay ? "▶ " : ""}{row.day}
+                </div>
+                {(row.subjects || []).map((c, i) => (
+                  <div className="c" key={i} style={{ background: row.day === todayDay ? `${subjectColor(c)}18` : "" }}>
+                    <b style={{ color: row.day === todayDay ? subjectColor(c) : "inherit", fontSize:12 }}>{c}</b>
+                  </div>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+          {schedule.length === 0 && <div className="mini">Timetable not yet set.</div>}
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
 export const parentNav = [
   { key: "dashboard",  label: "My Child",   icon: "🏠", Component: Dashboard  },
   { key: "attendance", label: "Attendance",  icon: "📅", Component: Attendance },
   { key: "marks",      label: "Marks",       icon: "📊", Component: Marks      },
+  { key: "timetable",  label: "Timetable",   icon: "🕐", Component: Timetable  },
   { key: "fees",       label: "Fees",        icon: "💳", Component: Fees       },
   { key: "notices",    label: "Notices",     icon: "📢", Component: Notices    },
 ];

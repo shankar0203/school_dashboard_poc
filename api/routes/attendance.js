@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // GET /attendance/classwise -> { "8-A": 92, "9-A": 83, ... }
 router.get("/classwise", h(async (req, res) => {
@@ -44,7 +45,7 @@ router.get("/by-date", h(async (req, res) => {
 }));
 
 // POST /attendance  { classId, date, records:[{studentId, status}] }  -> upsert a day
-router.post("/", h(async (req, res) => {
+router.post("/", requireRole(...CAN.MARK_ATTENDANCE), h(async (req, res) => {
   const { classId, date, records } = req.body;
   if (!classId || !date || !Array.isArray(records))
     return res.status(400).json({ error: "classId, date, records[] required" });

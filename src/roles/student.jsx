@@ -67,10 +67,12 @@ function Dashboard() {
   const f      = fees.data || { total: 0, paid: 0, terms: [] };
   const feeDue = f.total - f.paid;
 
-  // Today's timetable
-  const tt           = api.getTimetable();
-  const todayRow     = tt.find((r) => r[0] === todayDay);
-  const todayPeriods = todayRow ? todayRow.slice(1) : [];
+  // Today's timetable (from DB)
+  const CLASS_ID_VAL = config.academics.classes.indexOf("8-A") + 1;
+  const ttData       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), []);
+  const ttSchedule   = ttData.data || [];
+  const todayRow     = ttSchedule.find((r) => r.day === todayDay);
+  const todayPeriods = todayRow ? todayRow.subjects : [];
   const isWeekend    = todayDay === "Saturday" || todayDay === "Sunday";
 
   // Upcoming events (next 3)
@@ -313,28 +315,32 @@ function Results() {
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
 function Timetable() {
-  const tt      = api.getTimetable();
+  const CLASS_ID_VAL = config.academics.classes.indexOf("8-A") + 1;
+  const tt       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), []);
   const todayDay = DAY_NAMES[new Date().getDay()];
+  const schedule = tt.data || [];
   return (
     <>
       <PageHead title="My Timetable" sub="Class 8-A · weekly" />
       <Card>
-        <div className="ttg">
-          <div className="h">Day</div>
-          {["P1","P2","P3","P4","P5","P6"].map((p) => <div className="h" key={p}>{p}</div>)}
-          {tt.map((r) => (
-            <React.Fragment key={r[0]}>
-              <div className="dd" style={{ background: r[0] === todayDay ? "rgba(124,92,255,0.15)" : "", fontWeight: r[0] === todayDay ? 700 : 400 }}>
-                {r[0] === todayDay ? "▶ " : ""}{r[0]}
-              </div>
-              {r.slice(1).map((c, i) => (
-                <div className="c" key={i} style={{ background: r[0] === todayDay ? `${subjectColor(c)}18` : "" }}>
-                  <b style={{ color: r[0] === todayDay ? subjectColor(c) : "inherit" }}>{c}</b>
+        <Loading state={tt}>
+          <div className="ttg">
+            <div className="h">Day</div>
+            {["P1","P2","P3","P4","P5","P6"].map((p) => <div className="h" key={p}>{p}</div>)}
+            {schedule.map((row) => (
+              <React.Fragment key={row.day}>
+                <div className="dd" style={{ background: row.day === todayDay ? "rgba(124,92,255,0.15)" : "", fontWeight: row.day === todayDay ? 700 : 400 }}>
+                  {row.day === todayDay ? "▶ " : ""}{row.day}
                 </div>
-              ))}
-            </React.Fragment>
-          ))}
-        </div>
+                {(row.subjects || []).map((c, i) => (
+                  <div className="c" key={i} style={{ background: row.day === todayDay ? `${subjectColor(c)}18` : "" }}>
+                    <b style={{ color: row.day === todayDay ? subjectColor(c) : "inherit" }}>{c}</b>
+                  </div>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
+        </Loading>
       </Card>
     </>
   );

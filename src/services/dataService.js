@@ -11,7 +11,11 @@ export const DEMO_STUDENT_ID = 1;
 
 // --- static (UI only) ----------------------------------------------------
 export const getDemoUser = (role) => demoUsers[role];
-export const getTimetable = () => timetable;
+export const getTimetable = () => timetable;  // legacy static (kept for fallback)
+
+// --- timetable (DB) ------------------------------------------------------
+export const getTimetableDB = (classId) => get(`/timetable?classId=${classId}`);
+export const saveTimetable  = (classId, schedule) => put("/timetable", { classId, schedule });
 
 // --- students ------------------------------------------------------------
 export const listStudents = (cls) =>
@@ -38,6 +42,7 @@ export const createExam = (name, subjectIds) => post("/exams", { name, subjectId
 export const setExamStatus = (examId, status) => put(`/exams/${examId}/status`, { status });
 export const getMarks = (examId, studentId) =>
   get(`/marks?examId=${examId}&studentId=${studentId}`);
+export const getStudentMarksAll = (studentId) => get(`/marks/student/${studentId}`);
 export const getMarksGrid = (examId, classId, subjectId) =>
   get(`/marks/grid?examId=${examId}&classId=${classId}&subjectId=${subjectId}`);
 export const saveMarks = (examId, subjectId, marks) =>

@@ -1,5 +1,5 @@
 // TEACHER role screens — live data from the API.
-import React, { useState } from "react";
+import React, { useState, Fragment } from "react";
 import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
@@ -437,13 +437,32 @@ function Students() {
       <Card>
         <Loading state={list}>
           <table>
-            <thead><tr><th>Roll</th><th>Name</th><th>Class</th><th>Attendance</th><th>Guardian</th><th>Phone</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Roll</th><th>Name</th><th>Att.</th><th>Fee</th>
+                <th>Remarks</th><th>Guardian</th><th>Phone</th><th></th>
+              </tr>
+            </thead>
             <tbody>
               {(list.data || []).map((s) => (
                 <tr key={s.id}>
                   <td>{s.roll}</td>
                   <td><b style={{ cursor: "pointer" }} onClick={() => setProfileId(s.id)}>{s.name}</b></td>
-                  <td>{s.cls}</td><td>{s.att}%</td><td>{s.guardian}</td><td className="mini">{s.phone}</td>
+                  <td>
+                    <span className={`badge ${Number(s.att) >= 85 ? "b-good" : Number(s.att) >= 75 ? "b-warn" : "b-bad"}`}>
+                      {s.att}%
+                    </span>
+                  </td>
+                  <td>
+                    <span className={`badge ${s.fee === "Paid" ? "b-good" : s.fee === "Partial" ? "b-warn" : "b-bad"}`}>
+                      {s.fee}
+                    </span>
+                  </td>
+                  <td className="mini" style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: s.remarks ? "var(--txt)" : "var(--muted)" }}>
+                    {s.remarks || "—"}
+                  </td>
+                  <td>{s.guardian}</td>
+                  <td className="mini">{s.phone}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <span className="mini link" onClick={() => setProfileId(s.id)}>View</span>
                     {" · "}
@@ -679,11 +698,302 @@ function Messages() {
   );
 }
 
+// ─── Timetable ───────────────────────────────────────────────────────────────
+const SUBJ_COLORS_TT = {
+  Tamil:"#ff5c7c", English:"#5aa9ff", Maths:"#7c5cff",
+  Science:"#34d1bf", Social:"#ffb454", Computer:"#ff8c42", "P.E.":"#4ade80", Library:"#9b7bff", Games:"#aaa",
+};
+const sc = (s) => SUBJ_COLORS_TT[s] || "#9b7bff";
+
+function Timetable() {
+  const tt   = useApi(() => api.getTimetableDB(MY_CLASS_ID), []);
+  const subs = useApi(() => api.getSubjects(), []);
+  const [editing, setEditing] = useState(false);
+  const [draft,   setDraft]   = useState(null);
+
+  const schedule = (editing ? draft : tt.data) || [];
+  const allSubs  = (subs.data || []).map((s) => s.name);
+  const PERIODS  = ["P1","P2","P3","P4","P5","P6"];
+
+  const startEdit = () => { setDraft(JSON.parse(JSON.stringify(tt.data || []))); setEditing(true); };
+  const cancelEdit = () => { setDraft(null); setEditing(false); };
+  const setCell = (di, pi, val) =>
+    setDraft(draft.map((row, i) => i !== di ? row : { ...row, subjects: row.subjects.map((s, j) => j !== pi ? s : val) }));
+  const save = async () => {
+    await api.saveTimetable(MY_CLASS_ID, draft);
+    setEditing(false); setDraft(null); tt.reload();
+    alert("Timetable saved.");
+  };
+
+  return (
+    <>
+      <PageHead
+        title={`Timetable — ${MY_CLASS}`}
+        sub="Weekly class schedule — editable"
+        right={
+          editing ? (
+            <div style={{ display:"flex", gap:8 }}>
+              <button className="btn ghost sm" onClick={cancelEdit}>Cancel</button>
+              <button className="btn sm" onClick={save}>Save changes</button>
+            </div>
+          ) : (
+            <button className="btn sm" onClick={startEdit}>✏️ Edit timetable</button>
+          )
+        }
+      />
+      <Card>
+        <Loading state={tt}>
+          <div className="ttg">
+            <div className="h">Day</div>
+            {PERIODS.map((p) => <div className="h" key={p}>{p}</div>)}
+            {schedule.map((row, di) => (
+              <Fragment key={row.day}>
+                <div className="dd">{row.day}</div>
+                {(row.subjects || []).map((sub, pi) => (
+                  <div className="c" key={pi}>
+                    {editing ? (
+                      <select
+                        value={sub}
+                        onChange={(e) => setCell(di, pi, e.target.value)}
+                        style={{ background:"var(--panel2)", border:"1px solid var(--line)", color:"var(--txt)", borderRadius:6, padding:"4px 5px", fontSize:11, width:"100%" }}
+                      >
+                        {allSubs.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <b style={{ color: sc(sub), fontSize:12 }}>{sub}</b>
+                    )}
+                  </div>
+                ))}
+              </Fragment>
+            ))}
+          </div>
+          {editing && <div className="mini" style={{ marginTop:10 }}>Select subjects from dropdowns, then Save changes.</div>}
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
+// ─── Student Report (sub-component for Reports screen) ───────────────────────
+function StudentReport({ studentId, onBack }) {
+  const student    = useApi(() => api.getStudent(studentId), [studentId]);
+  const attendance = useApi(() => api.getStudentAttendance(studentId), [studentId]);
+  const allMarks   = useApi(() => api.getStudentMarksAll(studentId), [studentId]);
+
+  const s        = student.data;
+  const attRows  = attendance.data || [];
+  const totalDays   = attRows.length;
+  const presentDays = attRows.filter((r) => r.status === "present").length;
+  const absentDays  = totalDays - presentDays;
+  const attPct      = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
+  const examData    = allMarks.data || [];
+  const initials    = s ? s.name.split(" ").map((w) => w[0]).join("").slice(0, 2) : "??";
+
+  return (
+    <>
+      <div className="no-print" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+        <button className="btn ghost sm" onClick={onBack}>← Back to list</button>
+        <button className="btn sm" onClick={() => window.print()}>⬇ Download PDF</button>
+      </div>
+
+      <div id="student-report">
+        <Loading state={student}>
+          {s && (
+            <>
+              {/* Header card */}
+              <Card style={{ marginBottom:16 }}>
+                <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" }}>
+                  <div style={{ width:64, height:64, borderRadius:"50%", background:"linear-gradient(135deg,var(--accent),#34d1bf)", color:"#fff", fontWeight:800, fontSize:22, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {initials}
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:20, fontWeight:800 }}>{s.name}</div>
+                    <div className="mini" style={{ marginTop:3 }}>
+                      Class {s.class_name} · Roll {s.roll_no} · {s.gender || "—"} · Blood {s.blood_group || "—"}
+                    </div>
+                    <div className="mini" style={{ marginTop:2 }}>
+                      Guardian: {s.guardian_name || "—"} ({s.guardian_relation || "—"}) · {s.guardian_phone || "—"}
+                    </div>
+                    {s.notes && (
+                      <div style={{ marginTop:8, fontSize:12, background:"rgba(255,180,84,0.1)", border:"1px solid rgba(255,180,84,0.3)", borderRadius:8, padding:"6px 12px" }}>
+                        📝 Remarks: {s.notes}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:28, fontWeight:800, color: attPct >= 85 ? "var(--good)" : attPct >= 75 ? "var(--warn)" : "var(--bad)" }}>
+                      {attPct}%
+                    </div>
+                    <div className="mini">attendance</div>
+                    <div className="mini" style={{ marginTop:4 }}>{presentDays}P · {absentDays}A · {totalDays} days</div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Attendance calendar */}
+              <Card title="📅 Attendance Record" style={{ marginBottom:16 }}>
+                <Loading state={attendance}>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", padding:"4px 0" }}>
+                    {attRows.map((r) => {
+                      const day = new Date(r.date).getDate();
+                      const p   = r.status === "present";
+                      return (
+                        <div key={r.date} title={r.date} style={{
+                          width:34, height:34, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
+                          fontSize:11, fontWeight:600,
+                          background: p ? "rgba(74,222,128,0.15)" : "rgba(255,92,124,0.15)",
+                          color: p ? "var(--good)" : "var(--bad)",
+                          border: `1px solid ${p ? "rgba(74,222,128,0.35)" : "rgba(255,92,124,0.35)"}`,
+                        }}>
+                          {day}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display:"flex", gap:14, marginTop:10, fontSize:12 }}>
+                    <span style={{ color:"var(--good)" }}>● Present: {presentDays}</span>
+                    <span style={{ color:"var(--bad)" }}>● Absent: {absentDays}</span>
+                    <span style={{ color:"var(--muted)" }}>Total: {totalDays} days</span>
+                  </div>
+                </Loading>
+              </Card>
+
+              {/* Marks per exam */}
+              <Card title="📊 Exam Results" style={{ marginBottom:16 }}>
+                <Loading state={allMarks}>
+                  {examData.length === 0 ? (
+                    <div className="mini">No exam results yet.</div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+                      {examData.map((exam) => {
+                        const valid = exam.marks.filter((m) => m.mark != null);
+                        const avg   = valid.length ? Math.round(valid.reduce((a, m) => a + m.mark, 0) / valid.length) : null;
+                        const grade = avg != null ? config.academics.grade(avg) : "—";
+                        return (
+                          <div key={exam.examId}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                              <b style={{ fontSize:13 }}>{exam.examName}</b>
+                              {avg != null && (
+                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                                  <span className="mini">Avg: {avg}%</span>
+                                  <span className={`badge ${avg >= 80 ? "b-good" : avg >= 35 ? "b-warn" : "b-bad"}`}>{grade}</span>
+                                </div>
+                              )}
+                            </div>
+                            {exam.marks.map((m) => {
+                              const val   = m.mark != null ? m.mark : 0;
+                              const color = val >= 80 ? "#4ade80" : val >= 60 ? "#34d1bf" : val >= 35 ? "#ffb454" : "#ff5c7c";
+                              return (
+                                <div key={m.subject} className="subline">
+                                  <div className="s-nm" style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                    <span style={{ width:8, height:8, borderRadius:2, background:sc(m.subject), display:"inline-block" }} />
+                                    {m.subject}
+                                  </div>
+                                  <div className="bar" style={{ flex:1 }}>
+                                    <i style={{ width:(m.mark != null ? m.mark : 0) + "%", background:color }} />
+                                  </div>
+                                  <div className="s-mk" style={{ color }}>
+                                    {m.mark != null ? m.mark : "—"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Loading>
+              </Card>
+
+              {/* Fee summary */}
+              {s.fees && (
+                <Card title="💳 Fee Status">
+                  <div style={{ display:"flex", gap:24, alignItems:"center" }}>
+                    <div>
+                      <div style={{ fontSize:22, fontWeight:800, color: s.fees.pending > 0 ? "var(--bad)" : "var(--good)" }}>
+                        ₹{s.fees.paid.toLocaleString("en-IN")}
+                      </div>
+                      <div className="mini">paid of ₹{s.fees.total.toLocaleString("en-IN")}</div>
+                    </div>
+                    {s.fees.pending > 0
+                      ? <span className="badge b-bad">₹{s.fees.pending.toLocaleString("en-IN")} pending</span>
+                      : <span className="badge b-good">Fully paid</span>}
+                  </div>
+                </Card>
+              )}
+            </>
+          )}
+        </Loading>
+      </div>
+
+      <style>{`
+        @media print {
+          .no-print, .left-nav, .top-bar, .layout-shell > *:not(#student-report) { display: none !important; }
+          #student-report { padding: 24px; }
+          body, .layout-shell { background: white !important; color: #111 !important; }
+        }
+      `}</style>
+    </>
+  );
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+function Reports() {
+  const list = useApi(() => api.listStudents(MY_CLASS), []);
+  const [selectedId, setSelectedId] = useState(null);
+
+  if (selectedId) {
+    return <StudentReport studentId={selectedId} onBack={() => setSelectedId(null)} />;
+  }
+
+  return (
+    <>
+      <PageHead title="Student Reports" sub="Select a student to view full profile and download PDF" />
+      <Card>
+        <Loading state={list}>
+          <div className="grid g4" style={{ gap:10 }}>
+            {(list.data || []).map((s) => (
+              <div
+                key={s.id}
+                onClick={() => setSelectedId(s.id)}
+                style={{ cursor:"pointer", padding:"14px 16px", background:"var(--panel2)", borderRadius:12, border:"1px solid var(--line)", transition:"border-color .2s" }}
+                onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--accent)"}
+                onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--line)"}
+              >
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(124,92,255,0.2)", color:"var(--accent)", fontWeight:700, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    {s.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight:700, fontSize:13 }}>{s.name}</div>
+                    <div className="mini">Roll {s.roll}</div>
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                  <span className={`badge ${Number(s.att) >= 85 ? "b-good" : Number(s.att) >= 75 ? "b-warn" : "b-bad"}`} style={{ fontSize:10 }}>
+                    {s.att}% att
+                  </span>
+                  <span className={`badge ${s.fee === "Paid" ? "b-good" : s.fee === "Partial" ? "b-warn" : "b-bad"}`} style={{ fontSize:10 }}>
+                    {s.fee}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
 export const teacherNav = [
   { key: "dashboard",  label: "My Class",        icon: "🏠", Component: Dashboard },
   { key: "attendance", label: "Attendance",       icon: "🗓️", Component: AttendanceEntry },
   { key: "students",   label: "Students",         icon: "🎓", Component: Students },
+  { key: "timetable",  label: "Timetable",        icon: "🕐", Component: Timetable },
   { key: "results",    label: "Exam Results",     icon: "📊", Component: Results },
+  { key: "reports",    label: "Reports",          icon: "📄", Component: Reports },
   { key: "notes",      label: "Notes to Parent",  icon: "📝", Component: Notes },
   { key: "messages",   label: "Messages",         icon: "💬", Component: Messages },
 ];

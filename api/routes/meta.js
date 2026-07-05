@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // GET /meta/classes  -> [{ id, name }]
 router.get("/classes", h(async (req, res) => {
@@ -21,7 +22,7 @@ router.get("/subjects", h(async (req, res) => {
 }));
 
 // POST /meta/subjects { name } -> add a subject (e.g. Hindi). Idempotent on name.
-router.post("/subjects", h(async (req, res) => {
+router.post("/subjects", requireRole(...CAN.MANAGE_META), h(async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: "name required" });
   const [[existing]] = await db.query(

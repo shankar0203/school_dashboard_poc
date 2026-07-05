@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // GET /exams -> [{ id, name, status }]
 router.get("/", h(async (req, res) => {
@@ -12,7 +13,7 @@ router.get("/", h(async (req, res) => {
 }));
 
 // POST /exams  { name, subjectIds:[...] }  -> create exam + its subjects
-router.post("/", h(async (req, res) => {
+router.post("/", requireRole(...CAN.MANAGE_EXAMS), h(async (req, res) => {
   const { name, subjectIds } = req.body;
   if (!name) return res.status(400).json({ error: "name required" });
   const [r] = await db.query(
@@ -33,7 +34,7 @@ router.post("/", h(async (req, res) => {
 }));
 
 // PUT /exams/:id/status  { status: 'open' | 'locked' }
-router.put("/:id/status", h(async (req, res) => {
+router.put("/:id/status", requireRole(...CAN.MANAGE_EXAMS), h(async (req, res) => {
   const { status } = req.body;
   if (!["open", "locked"].includes(status))
     return res.status(400).json({ error: "status must be 'open' or 'locked'" });

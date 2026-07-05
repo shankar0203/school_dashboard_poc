@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
+const { requireRole, CAN } = require("../auth");
 
 // GET /fees?studentId=  -> { total, paid, terms:[{id,term,due,paid,date,receipt}] }
 router.get("/", h(async (req, res) => {
@@ -19,7 +20,7 @@ router.get("/", h(async (req, res) => {
 }));
 
 // POST /fees  { studentId, item, amount_due, due_date? }  -> add a fee item
-router.post("/", h(async (req, res) => {
+router.post("/", requireRole(...CAN.MANAGE_FEES), h(async (req, res) => {
   const { studentId, item, amount_due, due_date } = req.body;
   if (!studentId || !item || amount_due == null)
     return res.status(400).json({ error: "studentId, item, amount_due required" });
@@ -32,7 +33,7 @@ router.post("/", h(async (req, res) => {
 }));
 
 // POST /fees/:id/pay  { amount, receipt? }  -> record a payment (caps at amount_due)
-router.post("/:id/pay", h(async (req, res) => {
+router.post("/:id/pay", requireRole(...CAN.MANAGE_FEES), h(async (req, res) => {
   const { amount, receipt } = req.body;
   if (amount == null) return res.status(400).json({ error: "amount required" });
   await db.query(
