@@ -17,11 +17,23 @@ router.get("/", h(async (req, res) => {
   const { sub, email } = req.user;
   const { role, schoolId } = req;
 
-  // Look up the users row by cognito_sub
-  const [[u]] = await db.query(
+  // 1. Fast path — look up by cognito_sub (set on first login)
+  let [[u]] = await db.query(
     "SELECT id, name, email, phone FROM users WHERE cognito_sub = ? AND school_id = ?",
     [sub, schoolId]
   );
+
+  // 2. Fallback — admin pre-linked by email before the user ever logged in.
+  //    Match by email, then store the sub so the next login hits the fast path.
+  if (!u && email) {
+    [[u]] = await db.query(
+      "SELECT id, name, email, phone FROM users WHERE email = ? AND school_id = ?",
+      [email.toLowerCase(), schoolId]
+    );
+    if (u) {
+      await db.query("UPDATE users SET cognito_sub = ? WHERE id = ?", [sub, u.id]);
+    }
+  }
 
   if (!u) {
     // User is authenticated with Cognito but not yet linked in the DB.
@@ -91,17 +103,36 @@ router.post("/link", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, res) => 
   const { cognitoEmail, studentId, role: targetRole = "student" } = req.body;
   if (!cognitoEmail || !studentId) return res.status(400).json({ error: "cognitoEmail and studentId required" });
 
-  // 1. Find or create the users row for this Cognito email
+  const cleanEmail = cognitoEmail.trim().toLowerCase();
+
+  // 1. Find or create the users row for this Cognito email.
+  //    Priority: match by email OR match by the student's existing user_id.
   let [[u]] = await db.query(
-    "SELECT id FROM users WHERE email = ? AND school_id = ?",
-    [cognitoEmail.trim().toLowerCase(), req.schoolId]
+    "SELECT u.id FROM users u WHERE u.email = ? AND u.school_id = ?",
+    [cleanEmail, req.schoolId]
   );
+
   if (!u) {
-    const [r] = await db.query(
-      "INSERT INTO users (school_id, role, name, email, status) VALUES (?,?,?,?,'active')",
-      [req.schoolId, targetRole, cognitoEmail.trim(), cognitoEmail.trim().toLowerCase()]
+    // Check if this student already has a users row (seeded) — update its email
+    const [[existing]] = await db.query(
+      "SELECT u.id FROM users u JOIN students s ON s.user_id = u.id WHERE s.id = ? AND u.school_id = ?",
+      [studentId, req.schoolId]
     );
-    u = { id: r.insertId };
+    if (existing) {
+      // Reuse the existing user row, just update its email (so GET /me can match it)
+      await db.query(
+        "UPDATE users SET email = ? WHERE id = ?",
+        [cleanEmail, existing.id]
+      );
+      u = existing;
+    } else {
+      // No user row at all — create one
+      const [r] = await db.query(
+        "INSERT INTO users (school_id, role, name, email, status) VALUES (?,?,?,?,'active')",
+        [req.schoolId, targetRole, cognitoEmail.trim(), cleanEmail]
+      );
+      u = { id: r.insertId };
+    }
   }
 
   // 2. Link the student record to this users row
@@ -119,16 +150,29 @@ router.post("/link-teacher", requireRole(...CAN.MANAGE_STUDENTS), h(async (req, 
   const { cognitoEmail, classId } = req.body;
   if (!cognitoEmail || !classId) return res.status(400).json({ error: "cognitoEmail and classId required" });
 
+  const cleanEmail = cognitoEmail.trim().toLowerCase();
+
+  // Find existing user row or check if the class already has a teacher
   let [[u]] = await db.query(
     "SELECT id FROM users WHERE email = ? AND school_id = ?",
-    [cognitoEmail.trim().toLowerCase(), req.schoolId]
+    [cleanEmail, req.schoolId]
   );
   if (!u) {
-    const [r] = await db.query(
-      "INSERT INTO users (school_id, role, name, email, status) VALUES (?,'teacher',?,?,'active')",
-      [req.schoolId, cognitoEmail.trim(), cognitoEmail.trim().toLowerCase()]
+    // Reuse existing class teacher user row if any, updating their email
+    const [[existing]] = await db.query(
+      "SELECT u.id FROM users u JOIN classes c ON c.class_teacher_id = u.id WHERE c.id = ? AND u.school_id = ?",
+      [classId, req.schoolId]
     );
-    u = { id: r.insertId };
+    if (existing) {
+      await db.query("UPDATE users SET email = ? WHERE id = ?", [cleanEmail, existing.id]);
+      u = existing;
+    } else {
+      const [r] = await db.query(
+        "INSERT INTO users (school_id, role, name, email, status) VALUES (?,'teacher',?,?,'active')",
+        [req.schoolId, cognitoEmail.trim(), cleanEmail]
+      );
+      u = { id: r.insertId };
+    }
   }
 
   await db.query(
