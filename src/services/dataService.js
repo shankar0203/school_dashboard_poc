@@ -3,7 +3,7 @@
 //  Every function returns a Promise. Screens load these via the useApi hook.
 //  A couple of static bits (timetable, demo persona) stay local for the POC.
 // ===========================================================================
-import { get, post, put } from "../lib/apiClient.js";
+import { get, post, put, del } from "../lib/apiClient.js";
 import { demoUsers, timetable } from "../data/seed.js";
 
 // For the POC the logged-in student persona maps to seeded student id 1 (Aarav).
@@ -58,7 +58,9 @@ export const addFee = (studentId, item, amount_due, due_date) =>
 export const recordFeePayment = (feeId, amount) => post(`/fees/${feeId}/pay`, { amount });
 
 // --- events --------------------------------------------------------------
-export const getEvents = () => get("/meta/events");
+export const getEvents      = ()                          => get("/meta/events");
+export const createEvent    = (title, subtitle, eventDate) => post("/meta/events", { title, subtitle, eventDate });
+export const deleteEvent    = (id)                         => del(`/meta/events/${id}`);
 
 // --- messages ------------------------------------------------------------
 export const getMessages = () => get("/messages");

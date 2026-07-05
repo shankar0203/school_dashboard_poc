@@ -499,11 +499,122 @@ function Fees() {
   );
 }
 
+// ─── Circular Board ──────────────────────────────────────────────────────────
+function CircularBoard() {
+  const events  = useApi(() => api.getEvents(), []);
+  const [title, setTitle]       = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [date, setDate]         = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving]     = useState(false);
+
+  const post = async () => {
+    if (!title.trim()) { alert("Enter a title"); return; }
+    setSaving(true);
+    try {
+      await api.createEvent(title.trim(), subtitle.trim(), date);
+      setTitle(""); setSubtitle(""); events.reload();
+    } finally { setSaving(false); }
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this circular?")) return;
+    await api.deleteEvent(id);
+    events.reload();
+  };
+
+  const rows = events.data || [];
+  const TYPE_ICON = (t) => {
+    const lo = t.toLowerCase();
+    if (lo.includes("exam") || lo.includes("test"))   return "📝";
+    if (lo.includes("holiday") || lo.includes("off")) return "🏖️";
+    if (lo.includes("meeting") || lo.includes("ptm")) return "👥";
+    if (lo.includes("sport") || lo.includes("match")) return "🏆";
+    if (lo.includes("fee") || lo.includes("pay"))     return "💳";
+    return "📢";
+  };
+
+  return (
+    <>
+      <PageHead title="Circular Board" sub="Post announcements — visible to all students and parents instantly" />
+
+      {/* Compose */}
+      <Card title="📣 Post new circular" style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input
+            className="compose"
+            style={{ width: "100%", fontSize: 14 }}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title  e.g. 'PTM on 12 July — 9 AM to 1 PM'"
+          />
+          <input
+            className="compose"
+            style={{ width: "100%", fontSize: 13 }}
+            value={subtitle}
+            onChange={(e) => setSubtitle(e.target.value)}
+            placeholder="Details (optional)  e.g. 'All parents are requested to attend'"
+          />
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="date"
+              className="compose"
+              style={{ width: 170, fontSize: 13 }}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+            <button className="btn" disabled={saving} onClick={post} style={{ minWidth: 120 }}>
+              {saving ? "Posting…" : "Post circular"}
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {/* List */}
+      <Card title={`All circulars (${rows.length})`}>
+        <Loading state={events}>
+          {rows.length === 0 ? (
+            <div className="mini" style={{ padding: "12px 0" }}>No circulars posted yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {rows.map((ev) => (
+                <div key={ev.id} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 0", borderBottom: "1px solid var(--line)" }}>
+                  {/* Date badge */}
+                  <div style={{ minWidth: 48, textAlign: "center", flexShrink: 0 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: "var(--primary)", lineHeight: 1 }}>{ev.d}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 1 }}>{ev.m}</div>
+                  </div>
+                  {/* Icon + content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                      <span style={{ fontSize: 16 }}>{TYPE_ICON(ev.t)}</span>
+                      <b style={{ fontSize: 14 }}>{ev.t}</b>
+                    </div>
+                    {ev.s && <div className="mini" style={{ color: "var(--muted)" }}>{ev.s}</div>}
+                  </div>
+                  {/* Delete */}
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => remove(ev.id)}
+                    style={{ flexShrink: 0, color: "var(--bad)", borderColor: "rgba(255,92,124,0.3)", fontSize: 12 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
 export const principalNav = [
-  { key: "dashboard",  label: "Dashboard",   icon: "📊", Component: Dashboard  },
-  { key: "attendance", label: "Attendance",   icon: "🗓️", Component: Attendance },
-  { key: "students",   label: "Students",     icon: "🎓", Component: Students   },
-  { key: "results",    label: "Exam Results", icon: "📋", Component: Results    },
-  { key: "messages",   label: "Messages",     icon: "💬", Component: Messages   },
-  { key: "fees",       label: "Fees Status",  icon: "💰", Component: Fees       },
+  { key: "dashboard",  label: "Dashboard",   icon: "📊", Component: Dashboard      },
+  { key: "attendance", label: "Attendance",   icon: "🗓️", Component: Attendance     },
+  { key: "students",   label: "Students",     icon: "🎓", Component: Students       },
+  { key: "results",    label: "Exam Results", icon: "📋", Component: Results        },
+  { key: "messages",   label: "Messages",     icon: "💬", Component: Messages       },
+  { key: "fees",       label: "Fees Status",  icon: "💰", Component: Fees           },
+  { key: "circulars",  label: "Circulars",    icon: "📣", Component: CircularBoard  },
 ];

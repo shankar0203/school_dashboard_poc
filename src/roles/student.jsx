@@ -319,26 +319,37 @@ function Timetable() {
   const tt       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), []);
   const todayDay = DAY_NAMES[new Date().getDay()];
   const schedule = tt.data || [];
+
+  const maxPeriods = schedule.length
+    ? Math.min(8, Math.max(6, ...schedule.map((r) => (r.subjects || []).length)))
+    : 6;
+  const PERIODS = Array.from({ length: maxPeriods }, (_, i) => `P${i + 1}`);
+
   return (
     <>
       <PageHead title="My Timetable" sub="Class 8-A · weekly" />
       <Card>
         <Loading state={tt}>
-          <div className="ttg">
-            <div className="h">Day</div>
-            {["P1","P2","P3","P4","P5","P6"].map((p) => <div className="h" key={p}>{p}</div>)}
-            {schedule.map((row) => (
-              <React.Fragment key={row.day}>
-                <div className="dd" style={{ background: row.day === todayDay ? "rgba(124,92,255,0.15)" : "", fontWeight: row.day === todayDay ? 700 : 400 }}>
-                  {row.day === todayDay ? "▶ " : ""}{row.day}
-                </div>
-                {(row.subjects || []).map((c, i) => (
-                  <div className="c" key={i} style={{ background: row.day === todayDay ? `${subjectColor(c)}18` : "" }}>
-                    <b style={{ color: row.day === todayDay ? subjectColor(c) : "inherit" }}>{c}</b>
+          <div style={{ overflowX: "auto" }}>
+            <div className="ttg" style={{ gridTemplateColumns: `80px repeat(${maxPeriods}, 1fr)` }}>
+              <div className="h">Day</div>
+              {PERIODS.map((p) => <div className="h" key={p}>{p}</div>)}
+              {schedule.map((row) => (
+                <React.Fragment key={row.day}>
+                  <div className="dd" style={{ background: row.day === todayDay ? "rgba(124,92,255,0.15)" : "", fontWeight: row.day === todayDay ? 700 : 400 }}>
+                    {row.day === todayDay ? "▶ " : ""}{row.day}
                   </div>
-                ))}
-              </React.Fragment>
-            ))}
+                  {Array.from({ length: maxPeriods }, (_, i) => {
+                    const c = (row.subjects || [])[i];
+                    return (
+                      <div className="c" key={i} style={{ background: row.day === todayDay && c ? `${subjectColor(c)}18` : "" }}>
+                        {c ? <b style={{ color: row.day === todayDay ? subjectColor(c) : "inherit" }}>{c}</b> : <span className="mini" style={{ opacity: 0.4 }}>—</span>}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
           </div>
         </Loading>
       </Card>
@@ -349,17 +360,32 @@ function Timetable() {
 // ─── Events ───────────────────────────────────────────────────────────────────
 function Events() {
   const events = useApi(() => api.getEvents(), []);
+  const TYPE_ICON = (t) => {
+    const lo = (t || "").toLowerCase();
+    if (lo.includes("exam") || lo.includes("test"))   return "📝";
+    if (lo.includes("holiday") || lo.includes("off")) return "🏖️";
+    if (lo.includes("meeting") || lo.includes("ptm")) return "👥";
+    if (lo.includes("sport") || lo.includes("match")) return "🏆";
+    if (lo.includes("fee") || lo.includes("pay"))     return "💳";
+    return "📢";
+  };
   return (
     <>
-      <PageHead title="Events & News" sub="Announcements from the school" />
+      <PageHead title="Events & Circulars" sub="Announcements posted by the school" />
       <Card>
         <Loading state={events}>
-          {(events.data || []).map((e, i) => (
-            <div className="event" key={i}>
-              <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
-              <div><div style={{ fontWeight: 600, fontSize: 14 }}>{e.t}</div><div className="mini">{e.s}</div></div>
-            </div>
-          ))}
+          {(events.data || []).length === 0
+            ? <div className="mini">No events posted yet.</div>
+            : (events.data || []).map((e) => (
+                <div className="event" key={e.id || e.t}>
+                  <div className="dt"><div className="d">{e.d}</div><div className="m">{e.m}</div></div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{TYPE_ICON(e.t)} {e.t}</div>
+                    {e.s && <div className="mini">{e.s}</div>}
+                  </div>
+                </div>
+              ))
+          }
         </Loading>
       </Card>
     </>

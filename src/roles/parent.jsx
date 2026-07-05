@@ -368,19 +368,46 @@ function Fees() {
 
 // ─── Notices ──────────────────────────────────────────────────────────────────
 function Notices() {
-  const msgs   = useApi(() => api.getMessages(), []);
-  const feed   = (msgs.data && msgs.data.studentFeed) || [];
-  const school = feed.filter((m) => m.role === "principal");
+  const msgs    = useApi(() => api.getMessages(), []);
+  const events  = useApi(() => api.getEvents(), []);
+  const feed    = (msgs.data && msgs.data.studentFeed) || [];
   const teacher = feed.filter((m) => m.role === "teacher");
+  const circulars = events.data || [];
+
+  const TYPE_ICON = (t) => {
+    const lo = (t || "").toLowerCase();
+    if (lo.includes("exam") || lo.includes("test"))   return "📝";
+    if (lo.includes("holiday") || lo.includes("off")) return "🏖️";
+    if (lo.includes("meeting") || lo.includes("ptm")) return "👥";
+    if (lo.includes("sport") || lo.includes("match")) return "🏆";
+    if (lo.includes("fee") || lo.includes("pay"))     return "💳";
+    return "📢";
+  };
+
   return (
     <>
       <PageHead title="Notices & Notes" sub="School announcements and teacher notes for your child" />
       <div className="grid g2">
-        <Card title="📢 From School (Principal)">
-          <Loading state={msgs}>
-            {school.length === 0
-              ? <div className="mini">No school notices.</div>
-              : school.map((m, i) => <Message m={m} key={i} />)}
+        <Card title="📢 School Circulars">
+          <Loading state={events}>
+            {circulars.length === 0
+              ? <div className="mini">No circulars posted yet.</div>
+              : circulars.map((ev) => (
+                  <div key={ev.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                    <div style={{ minWidth: 40, textAlign: "center", flexShrink: 0 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "var(--primary)", lineHeight: 1 }}>{ev.d}</div>
+                      <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase" }}>{ev.m}</div>
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
+                        <span>{TYPE_ICON(ev.t)}</span>
+                        <b style={{ fontSize: 13 }}>{ev.t}</b>
+                      </div>
+                      {ev.s && <div className="mini" style={{ color: "var(--muted)" }}>{ev.s}</div>}
+                    </div>
+                  </div>
+                ))
+            }
           </Loading>
         </Card>
         <Card title="📝 From Class Teacher">

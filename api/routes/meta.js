@@ -37,16 +37,39 @@ router.post("/subjects", requireRole(...CAN.MANAGE_META), h(async (req, res) => 
   res.json({ id: r.insertId });
 }));
 
-// GET /meta/events -> [{ d, m, t, s }]  (matches the UI event card)
+// GET /meta/events -> [{ id, d, m, t, s, event_date }]
 router.get("/events", h(async (req, res) => {
   const [rows] = await db.query(
-    `SELECT DATE_FORMAT(event_date,'%d') AS d,
+    `SELECT id,
+            DATE_FORMAT(event_date,'%d') AS d,
             DATE_FORMAT(event_date,'%b') AS m,
-            title AS t, subtitle AS s
-     FROM events WHERE school_id = ? ORDER BY event_date`,
+            title AS t, subtitle AS s,
+            event_date
+     FROM events WHERE school_id = ? ORDER BY event_date DESC`,
     [req.schoolId]
   );
   res.json(rows);
+}));
+
+// POST /meta/events — principal posts a circular/announcement
+// Body: { title, subtitle, eventDate }
+router.post("/events", requireRole(...CAN.MANAGE_META), h(async (req, res) => {
+  const { title, subtitle, eventDate } = req.body;
+  if (!title || !eventDate) return res.status(400).json({ error: "title and eventDate required" });
+  const [r] = await db.query(
+    "INSERT INTO events (school_id, title, subtitle, event_date) VALUES (?,?,?,?)",
+    [req.schoolId, title.trim(), (subtitle || "").trim(), eventDate]
+  );
+  res.json({ ok: true, id: r.insertId });
+}));
+
+// DELETE /meta/events/:id
+router.delete("/events/:id", requireRole(...CAN.MANAGE_META), h(async (req, res) => {
+  await db.query(
+    "DELETE FROM events WHERE id = ? AND school_id = ?",
+    [req.params.id, req.schoolId]
+  );
+  res.json({ ok: true });
 }));
 
 module.exports = router;

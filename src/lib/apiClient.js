@@ -31,6 +31,7 @@ async function req(path, opts = {}) {
   return res.status === 204 ? null : res.json();
 }
 
-export const get = (path) => req(path);
-export const post = (path, body) => req(path, { method: "POST", body: JSON.stringify(body || {}) });
-export const put = (path, body) => req(path, { method: "PUT", body: JSON.stringify(body || {}) });
+export const get  = (path) => req(path);
+export const post = (path, body) => req(path, { method: "POST",   body: JSON.stringify(body || {}) });
+export const put  = (path, body) => req(path, { method: "PUT",    body: JSON.stringify(body || {}) });
+export const del  = (path)       => req(path, { method: "DELETE" });
