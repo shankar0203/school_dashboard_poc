@@ -801,15 +801,17 @@ function Timetable() {
 
 // ─── Student Report (sub-component for Reports screen) ───────────────────────
 function StudentReport({ studentId, onBack }) {
-  const student    = useApi(() => api.getStudent(studentId), [studentId]);
+  const student    = useApi(() => api.getStudent(studentId),        [studentId]);
   const attendance = useApi(() => api.getStudentAttendance(studentId), [studentId]);
   const allMarks   = useApi(() => api.getStudentMarksAll(studentId), [studentId]);
+  const feesDetail = useApi(() => api.getFees(studentId),           [studentId]);
 
   const s           = student.data;
   const attRows     = attendance.data || [];
   const totalDays   = attRows.length;
   const presentDays = attRows.filter((r) => r.status === "present").length;
   const absentDays  = totalDays - presentDays;
+  const lateDays    = attRows.filter((r) => r.status === "late").length;
   const attPct      = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
   const absentDates = attRows.filter((r) => r.status === "absent").map((r) => {
     const d = new Date(r.date);
@@ -817,9 +819,10 @@ function StudentReport({ studentId, onBack }) {
   });
 
   const examData = allMarks.data || [];
+  const feeTerms = (feesDetail.data && feesDetail.data.terms) || [];
   const initials = s ? s.name.split(" ").map((w) => w[0]).join("").slice(0, 2) : "??";
 
-  // Build subject matrix: { subjectName -> { examId -> mark } }
+  // Subject matrix
   const subjects = examData.length ? [...new Set(examData.flatMap((e) => e.marks.map((m) => m.subject)))] : [];
   const subjectMatrix = {};
   subjects.forEach((sub) => {
@@ -830,31 +833,43 @@ function StudentReport({ studentId, onBack }) {
     });
   });
 
-  // Per-exam averages for trend
+  // Per-exam averages + pass/fail counts
+  const PASS_MARK = 35;
   const examAvgs = examData.map((exam) => {
-    const valid = exam.marks.filter((m) => m.mark != null);
-    return { name: exam.examName, avg: valid.length ? Math.round(valid.reduce((a, m) => a + m.mark, 0) / valid.length) : null };
+    const valid   = exam.marks.filter((m) => m.mark != null);
+    const avg     = valid.length ? Math.round(valid.reduce((a, m) => a + m.mark, 0) / valid.length) : null;
+    const passed  = valid.filter((m) => m.mark >= PASS_MARK).length;
+    const failed  = valid.filter((m) => m.mark < PASS_MARK).length;
+    const total   = valid.reduce((a, m) => a + m.mark, 0);
+    const maxPoss = valid.length * 100;
+    return { name: exam.examName, avg, passed, failed, total, maxPoss };
   });
 
-  // Best / weakest subject (by latest exam with data)
-  const latestExam = examData[examData.length - 1];
-  const latestValid = latestExam ? latestExam.marks.filter((m) => m.mark != null) : [];
-  const bestSubj  = latestValid.length ? latestValid.reduce((a, b) => a.mark > b.mark ? a : b) : null;
-  const worstSubj = latestValid.length ? latestValid.reduce((a, b) => a.mark < b.mark ? a : b) : null;
+  // Best / weakest subject (by best score across all exams)
+  const subjectBest = subjects.map((sub) => {
+    const marks = examData.map((e) => subjectMatrix[sub][e.examId]).filter((m) => m != null);
+    return { subject: sub, best: marks.length ? Math.max(...marks) : null, avg: marks.length ? Math.round(marks.reduce((a,b) => a+b,0)/marks.length) : null };
+  }).filter((x) => x.best != null);
+  const bestSubj  = subjectBest.length ? subjectBest.reduce((a, b) => a.best > b.best ? a : b) : null;
+  const worstSubj = subjectBest.length ? subjectBest.reduce((a, b) => a.avg < b.avg ? a : b) : null;
 
-  // Overall grade from last exam avg
-  const latestAvg = examAvgs.length ? examAvgs[examAvgs.length - 1].avg : null;
+  // Overall totals
+  const allValidMarks = examData.flatMap((e) => e.marks.filter((m) => m.mark != null).map((m) => m.mark));
+  const totalEarned   = allValidMarks.reduce((a, b) => a + b, 0);
+  const totalPossible = allValidMarks.length * 100;
+  const overallPct    = totalPossible > 0 ? Math.round((totalEarned / totalPossible) * 100) : null;
+
+  const latestAvg    = examAvgs.length ? examAvgs[examAvgs.length - 1].avg : null;
   const overallGrade = latestAvg != null ? config.academics.grade(latestAvg) : "—";
 
-  // Trend: compare last two exams
-  const trend = examAvgs.length >= 2
-    ? (examAvgs[examAvgs.length - 1].avg || 0) - (examAvgs[examAvgs.length - 2].avg || 0)
-    : 0;
-  const trendIcon = trend > 2 ? "↑" : trend < -2 ? "↓" : "→";
+  const trend      = examAvgs.length >= 2 ? (examAvgs[examAvgs.length-1].avg||0) - (examAvgs[examAvgs.length-2].avg||0) : 0;
+  const trendIcon  = trend > 2 ? "↑" : trend < -2 ? "↓" : "→";
   const trendColor = trend > 2 ? "var(--good)" : trend < -2 ? "var(--bad)" : "var(--muted)";
 
-  const markColor = (v) => v >= 80 ? "#4ade80" : v >= 60 ? "#34d1bf" : v >= 35 ? "#ffb454" : "#ff5c7c";
-  const markBg    = (v) => v == null ? "transparent" : v >= 80 ? "rgba(74,222,128,0.15)" : v >= 60 ? "rgba(52,209,191,0.12)" : v >= 35 ? "rgba(255,180,84,0.15)" : "rgba(255,92,124,0.15)";
+  const markColor = (v) => v >= 80 ? "#4ade80" : v >= 60 ? "#34d1bf" : v >= PASS_MARK ? "#ffb454" : "#ff5c7c";
+  const markBg    = (v) => v == null ? "transparent" : v >= 80 ? "rgba(74,222,128,0.15)" : v >= 60 ? "rgba(52,209,191,0.12)" : v >= PASS_MARK ? "rgba(255,180,84,0.15)" : "rgba(255,92,124,0.15)";
+  const money     = (v) => "₹" + Number(v||0).toLocaleString("en-IN");
+  const fmtDate   = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—";
 
   return (
     <>
@@ -867,100 +882,117 @@ function StudentReport({ studentId, onBack }) {
         <Loading state={student}>
           {s && (
             <>
-              {/* ── Print-only school header ───────────────────────────────── */}
+              {/* ── Print header ──────────────────────────────────────────── */}
               <div className="print-only" style={{ textAlign:"center", marginBottom:20, paddingBottom:16, borderBottom:"2px solid #ddd" }}>
-                <div style={{ fontSize:20, fontWeight:800 }}>{config.school.name}</div>
-                <div style={{ fontSize:13, color:"#666" }}>Student Progress Report · {config.school.academicYear}</div>
+                <div style={{ fontSize:22, fontWeight:800 }}>{config.school.name}</div>
+                <div style={{ fontSize:13, color:"#555" }}>Student Progress Report · Academic Year {config.school.academicYear}</div>
               </div>
 
-              {/* ── Identity card ─────────────────────────────────────────── */}
-              <div style={{
-                background:"linear-gradient(135deg, rgba(124,92,255,0.1) 0%, rgba(52,209,191,0.06) 100%)",
-                border:"1px solid rgba(124,92,255,0.25)", borderRadius:16, padding:"20px 24px", marginBottom:16,
-                display:"flex", gap:20, alignItems:"center", flexWrap:"wrap",
-              }}>
-                <div style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,#7c5cff,#34d1bf)", color:"#fff", fontWeight:800, fontSize:26, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 16px rgba(124,92,255,0.35)" }}>
-                  {initials}
-                </div>
-                <div style={{ flex:1, minWidth:180 }}>
-                  <div style={{ fontSize:22, fontWeight:800, marginBottom:4 }}>{s.name}</div>
-                  <div className="mini" style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-                    <span>📚 Class {s.class_name}</span>
-                    <span>🔢 Roll {s.roll_no}</span>
-                    {s.gender && <span>👤 {s.gender}</span>}
-                    {s.blood_group && <span>🩸 {s.blood_group}</span>}
-                    {s.dob && <span>🎂 {new Date(s.dob).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}</span>}
+              {/* ── Hero identity card ────────────────────────────────────── */}
+              <div style={{ background:"linear-gradient(135deg,rgba(124,92,255,0.1),rgba(52,209,191,0.06))", border:"1px solid rgba(124,92,255,0.25)", borderRadius:16, padding:"20px 24px", marginBottom:16 }}>
+                <div style={{ display:"flex", gap:20, alignItems:"flex-start", flexWrap:"wrap" }}>
+                  {/* Avatar */}
+                  <div style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,#7c5cff,#34d1bf)", color:"#fff", fontWeight:800, fontSize:26, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 16px rgba(124,92,255,0.35)" }}>
+                    {initials}
                   </div>
-                  <div className="mini" style={{ marginTop:4, color:"var(--muted)" }}>
-                    Guardian: <b style={{ color:"var(--txt)" }}>{s.guardian_name || "—"}</b>
-                    {s.guardian_relation && ` (${s.guardian_relation})`} · {s.guardian_phone || "—"}
-                  </div>
-                  {s.admission_date && (
-                    <div className="mini" style={{ marginTop:2, color:"var(--muted)" }}>
-                      Admitted: {new Date(s.admission_date).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}
+
+                  {/* Name + details grid */}
+                  <div style={{ flex:1, minWidth:200 }}>
+                    <div style={{ fontSize:22, fontWeight:800, marginBottom:8 }}>{s.name}</div>
+
+                    {/* Row 1 — academic */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:"4px 16px", fontSize:12, marginBottom:6 }}>
+                      <span><span style={{ color:"var(--muted)" }}>Class: </span><b>{s.class_name}</b></span>
+                      <span><span style={{ color:"var(--muted)" }}>Roll No: </span><b>{s.roll_no}</b></span>
+                      {s.admission_no && <span><span style={{ color:"var(--muted)" }}>Adm No: </span><b>{s.admission_no}</b></span>}
+                      {s.admission_date && <span><span style={{ color:"var(--muted)" }}>Admitted: </span><b>{fmtDate(s.admission_date)}</b></span>}
                     </div>
-                  )}
-                </div>
-                {/* Quick stat pills */}
-                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end" }}>
-                    <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
-                      <div style={{ fontSize:24, fontWeight:800, color: attPct >= 85 ? "var(--good)" : attPct >= 75 ? "var(--warn)" : "var(--bad)" }}>{attPct}%</div>
-                      <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Attendance</div>
+
+                    {/* Row 2 — personal */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:"4px 16px", fontSize:12, marginBottom:6 }}>
+                      {s.gender     && <span><span style={{ color:"var(--muted)" }}>Gender: </span><b style={{ textTransform:"capitalize" }}>{s.gender}</b></span>}
+                      {s.dob        && <span><span style={{ color:"var(--muted)" }}>DOB: </span><b>{fmtDate(s.dob)}</b></span>}
+                      {s.blood_group && <span><span style={{ color:"var(--muted)" }}>Blood: </span><b>{s.blood_group}</b></span>}
                     </div>
-                    {latestAvg != null && (
-                      <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
-                        <div style={{ fontSize:24, fontWeight:800, color: markColor(latestAvg) }}>{latestAvg}</div>
-                        <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Latest avg</div>
+
+                    {/* Row 3 — contact */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:"4px 16px", fontSize:12, marginBottom:6 }}>
+                      {s.student_phone && <span><span style={{ color:"var(--muted)" }}>Phone: </span><b>{s.student_phone}</b></span>}
+                      {s.student_email && <span><span style={{ color:"var(--muted)" }}>Email: </span><b>{s.student_email}</b></span>}
+                    </div>
+                    {s.address && (
+                      <div style={{ fontSize:12, marginBottom:6 }}>
+                        <span style={{ color:"var(--muted)" }}>Address: </span><b>{s.address}</b>
                       </div>
                     )}
-                    <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
-                      <div style={{ fontSize:24, fontWeight:800, color: overallGrade === "F" ? "var(--bad)" : overallGrade.includes("A") ? "var(--good)" : "var(--warn)" }}>{overallGrade}</div>
-                      <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Grade</div>
+
+                    {/* Row 4 — guardian */}
+                    <div style={{ background:"rgba(124,92,255,0.06)", borderRadius:8, padding:"8px 12px", marginTop:4 }}>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginBottom:4, fontWeight:600, letterSpacing:0.5 }}>GUARDIAN</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:"4px 16px", fontSize:12 }}>
+                        <span><span style={{ color:"var(--muted)" }}>Name: </span><b>{s.guardian_name || "—"}</b>{s.guardian_relation && <span style={{ color:"var(--muted)" }}> ({s.guardian_relation})</span>}</span>
+                        {s.guardian_phone && <span><span style={{ color:"var(--muted)" }}>Phone: </span><b>{s.guardian_phone}</b></span>}
+                        {s.guardian_email && <span><span style={{ color:"var(--muted)" }}>Email: </span><b>{s.guardian_email}</b></span>}
+                      </div>
                     </div>
-                    {s.fees && (
-                      <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
-                        <div style={{ fontSize:14, fontWeight:800, color: s.fees.pending > 0 ? "var(--bad)" : "var(--good)" }}>
-                          {s.fees.pending > 0 ? "Due" : "Paid"}
+                  </div>
+
+                  {/* Stat pills */}
+                  <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", flexShrink:0 }}>
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                      {[
+                        { val: attPct + "%", label: "Attendance", color: attPct >= 85 ? "var(--good)" : attPct >= 75 ? "var(--warn)" : "var(--bad)" },
+                        ...(latestAvg != null ? [{ val: latestAvg, label: "Latest avg", color: markColor(latestAvg) }] : []),
+                        { val: overallGrade, label: "Grade", color: overallGrade === "F" ? "var(--bad)" : overallGrade.includes("A") ? "var(--good)" : "var(--warn)" },
+                        ...(s.fees ? [{ val: s.fees.pending > 0 ? "Due" : "Paid", label: "Fees", color: s.fees.pending > 0 ? "var(--bad)" : "var(--good)" }] : []),
+                      ].map((p, i) => (
+                        <div key={i} style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 16px", minWidth:72 }}>
+                          <div style={{ fontSize:22, fontWeight:800, color:p.color }}>{p.val}</div>
+                          <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>{p.label}</div>
                         </div>
-                        <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Fees</div>
+                      ))}
+                    </div>
+                    {overallPct != null && (
+                      <div style={{ fontSize:11, color:"var(--muted)" }}>
+                        Total: {totalEarned}/{totalPossible} marks ({overallPct}%)
                       </div>
                     )}
+                    {trend !== 0 && (
+                      <div style={{ fontSize:12, color:trendColor, fontWeight:700 }}>{trendIcon} {Math.abs(trend)} pts vs prev exam</div>
+                    )}
                   </div>
-                  {trend !== 0 && (
-                    <div style={{ fontSize:12, color:trendColor, fontWeight:700 }}>
-                      {trendIcon} {Math.abs(trend)} pts vs last exam
-                    </div>
-                  )}
                 </div>
               </div>
 
               {/* ── Highlights row ────────────────────────────────────────── */}
-              {(bestSubj || worstSubj) && (
+              {subjectBest.length > 0 && (
                 <div className="grid g3" style={{ marginBottom:16, gap:12 }}>
                   {bestSubj && (
                     <div style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)", borderRadius:12, padding:"12px 16px" }}>
                       <div style={{ fontSize:11, color:"var(--muted)", marginBottom:4 }}>🏆 STRONGEST SUBJECT</div>
                       <div style={{ fontWeight:700, fontSize:14 }}>{bestSubj.subject}</div>
-                      <div style={{ fontSize:20, fontWeight:800, color:"var(--good)", marginTop:2 }}>{bestSubj.mark}/100</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"var(--good)", marginTop:2 }}>Best {bestSubj.best}/100</div>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginTop:2 }}>Avg {bestSubj.avg}/100</div>
                     </div>
                   )}
                   {worstSubj && worstSubj.subject !== bestSubj?.subject && (
                     <div style={{ background:"rgba(255,92,124,0.08)", border:"1px solid rgba(255,92,124,0.25)", borderRadius:12, padding:"12px 16px" }}>
                       <div style={{ fontSize:11, color:"var(--muted)", marginBottom:4 }}>⚠ NEEDS ATTENTION</div>
                       <div style={{ fontWeight:700, fontSize:14 }}>{worstSubj.subject}</div>
-                      <div style={{ fontSize:20, fontWeight:800, color:"var(--bad)", marginTop:2 }}>{worstSubj.mark}/100</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"var(--bad)", marginTop:2 }}>Best {worstSubj.best}/100</div>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginTop:2 }}>Avg {worstSubj.avg}/100</div>
                     </div>
                   )}
                   <div style={{ background:"rgba(90,169,255,0.08)", border:"1px solid rgba(90,169,255,0.25)", borderRadius:12, padding:"12px 16px" }}>
                     <div style={{ fontSize:11, color:"var(--muted)", marginBottom:6 }}>📈 EXAM TREND</div>
-                    <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:40 }}>
+                    <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:44 }}>
                       {examAvgs.map((e, i) => {
-                        const h = e.avg != null ? Math.max(6, Math.round((e.avg / 100) * 36)) : 4;
+                        const h = e.avg != null ? Math.max(6, Math.round((e.avg / 100) * 40)) : 4;
                         return (
                           <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                            <div style={{ fontSize:9, color: e.avg != null ? markColor(e.avg) : "var(--muted)", fontWeight:700 }}>{e.avg ?? "—"}</div>
                             <div style={{ width:"100%", height:h, background: e.avg != null ? markColor(e.avg) : "var(--line)", borderRadius:"3px 3px 0 0", opacity:0.85 }} />
-                            <div style={{ fontSize:9, color:"var(--muted)", textAlign:"center", lineHeight:1.2 }}>{e.name.split(" ").slice(0,2).join(" ")}</div>
+                            <div style={{ fontSize:8, color:"var(--muted)", textAlign:"center", lineHeight:1.2 }}>{e.name.split(" ").slice(0,2).join(" ")}</div>
                           </div>
                         );
                       })}
@@ -977,18 +1009,20 @@ function StudentReport({ studentId, onBack }) {
                       <table style={{ fontSize:13 }}>
                         <thead>
                           <tr>
-                            <th style={{ minWidth:90 }}>Subject</th>
+                            <th style={{ minWidth:100 }}>Subject</th>
                             {examData.map((e) => <th key={e.examId} style={{ textAlign:"center", minWidth:80 }}>{e.examName}</th>)}
                             <th style={{ textAlign:"center" }}>Best</th>
                             <th style={{ textAlign:"center" }}>Avg</th>
+                            <th style={{ textAlign:"center" }}>Status</th>
                           </tr>
                         </thead>
                         <tbody>
                           {subjects.map((sub) => {
-                            const marks = examData.map((e) => subjectMatrix[sub][e.examId]);
-                            const valid  = marks.filter((m) => m != null);
-                            const best   = valid.length ? Math.max(...valid) : null;
-                            const avg    = valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : null;
+                            const marks   = examData.map((e) => subjectMatrix[sub][e.examId]);
+                            const valid   = marks.filter((m) => m != null);
+                            const best    = valid.length ? Math.max(...valid) : null;
+                            const avg     = valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : null;
+                            const passing = valid.every((m) => m >= PASS_MARK);
                             return (
                               <tr key={sub}>
                                 <td>
@@ -1004,20 +1038,35 @@ function StudentReport({ studentId, onBack }) {
                                 ))}
                                 <td style={{ textAlign:"center", fontWeight:700, color: best != null ? markColor(best) : "var(--muted)" }}>{best ?? "—"}</td>
                                 <td style={{ textAlign:"center", color: avg != null ? markColor(avg) : "var(--muted)" }}>{avg ?? "—"}</td>
+                                <td style={{ textAlign:"center" }}>
+                                  {valid.length > 0
+                                    ? <span className={`badge ${passing ? "b-good" : "b-bad"}`}>{passing ? "Pass" : "Fail"}</span>
+                                    : <span className="mini">—</span>}
+                                </td>
                               </tr>
                             );
                           })}
-                          {/* Total row */}
+                          {/* Totals row */}
                           <tr style={{ borderTop:"2px solid var(--line)", background:"var(--panel2)" }}>
-                            <td><b>Average</b></td>
+                            <td><b>Class avg</b></td>
                             {examAvgs.map((e, i) => (
-                              <td key={i} style={{ textAlign:"center", fontWeight:700, color: e.avg != null ? markColor(e.avg) : "var(--muted)" }}>
-                                {e.avg ?? "—"}
-                              </td>
+                              <td key={i} style={{ textAlign:"center", fontWeight:700, color: e.avg != null ? markColor(e.avg) : "var(--muted)" }}>{e.avg ?? "—"}</td>
                             ))}
                             <td />
-                            <td style={{ textAlign:"center", fontWeight:800, color: latestAvg != null ? markColor(latestAvg) : "var(--muted)" }}>
-                              {latestAvg ?? "—"}
+                            <td style={{ textAlign:"center", fontWeight:800, color: latestAvg != null ? markColor(latestAvg) : "var(--muted)" }}>{latestAvg ?? "—"}</td>
+                            <td />
+                          </tr>
+                          {/* Pass/fail summary row */}
+                          <tr style={{ background:"var(--panel2)" }}>
+                            <td style={{ color:"var(--muted)", fontSize:11 }}>Pass / Fail</td>
+                            {examAvgs.map((e, i) => (
+                              <td key={i} style={{ textAlign:"center", fontSize:11 }}>
+                                <span style={{ color:"var(--good)" }}>{e.passed}P</span>
+                                {e.failed > 0 && <span style={{ color:"var(--bad)" }}> / {e.failed}F</span>}
+                              </td>
+                            ))}
+                            <td colSpan={3} style={{ textAlign:"center", fontSize:11, color:"var(--muted)" }}>
+                              Total {totalEarned}/{totalPossible} · {overallPct ?? "—"}%
                             </td>
                           </tr>
                         </tbody>
@@ -1031,32 +1080,40 @@ function StudentReport({ studentId, onBack }) {
               <Card title="📅 Attendance Record" style={{ marginBottom:16 }}>
                 <Loading state={attendance}>
                   <div className="grid g2" style={{ gap:16 }}>
-                    {/* Calendar */}
                     <div>
-                      <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:10 }}>
+                      {/* Summary stats */}
+                      <div style={{ display:"flex", gap:14, fontSize:12, marginBottom:10 }}>
+                        <span style={{ color:"var(--good)" }}>✓ Present: <b>{presentDays}</b></span>
+                        <span style={{ color:"var(--bad)" }}>✗ Absent: <b>{absentDays}</b></span>
+                        {lateDays > 0 && <span style={{ color:"var(--warn)" }}>⏱ Late: <b>{lateDays}</b></span>}
+                        <span style={{ color:"var(--muted)" }}>Total: <b>{totalDays}</b></span>
+                      </div>
+                      {/* Calendar dots */}
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                         {attRows.map((r) => {
                           const day = new Date(r.date).getDate();
                           const p   = r.status === "present";
+                          const l   = r.status === "late";
                           return (
-                            <div key={r.date} title={r.date} style={{
-                              width:32, height:32, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center",
-                              fontSize:11, fontWeight:600,
-                              background: p ? "rgba(74,222,128,0.15)" : "rgba(255,92,124,0.15)",
-                              color: p ? "var(--good)" : "var(--bad)",
-                              border: `1px solid ${p ? "rgba(74,222,128,0.3)" : "rgba(255,92,124,0.3)"}`,
+                            <div key={r.date} title={`${r.date} — ${r.status}`} style={{
+                              width:30, height:30, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:10, fontWeight:600,
+                              background: p ? "rgba(74,222,128,0.15)" : l ? "rgba(255,180,84,0.15)" : "rgba(255,92,124,0.15)",
+                              color: p ? "var(--good)" : l ? "var(--warn)" : "var(--bad)",
+                              border: `1px solid ${p ? "rgba(74,222,128,0.3)" : l ? "rgba(255,180,84,0.3)" : "rgba(255,92,124,0.3)"}`,
                             }}>
                               {day}
                             </div>
                           );
                         })}
                       </div>
-                      <div style={{ display:"flex", gap:14, fontSize:12 }}>
-                        <span style={{ color:"var(--good)" }}>✓ Present: {presentDays}</span>
-                        <span style={{ color:"var(--bad)" }}>✗ Absent: {absentDays}</span>
-                        <span style={{ color:"var(--muted)" }}>Total: {totalDays}</span>
+                      <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11 }}>
+                        <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(74,222,128,0.4)", marginRight:4 }}/>Present</span>
+                        <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(255,92,124,0.4)", marginRight:4 }}/>Absent</span>
+                        {lateDays > 0 && <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(255,180,84,0.4)", marginRight:4 }}/>Late</span>}
                       </div>
                     </div>
-                    {/* Absent dates list */}
+                    {/* Absent dates */}
                     <div>
                       <div style={{ fontSize:12, fontWeight:600, marginBottom:8, color:"var(--bad)" }}>
                         Absent dates ({absentDates.length})
@@ -1072,39 +1129,82 @@ function StudentReport({ studentId, onBack }) {
                           ))}
                         </div>
                       )}
+                      {attPct < 75 && (
+                        <div style={{ marginTop:10, fontSize:12, background:"rgba(255,92,124,0.08)", border:"1px solid rgba(255,92,124,0.25)", borderRadius:8, padding:"8px 12px", color:"var(--bad)" }}>
+                          ⚠ Attendance below 75% — follow-up required
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Loading>
               </Card>
 
-              {/* ── Fee breakdown ─────────────────────────────────────────── */}
-              {s.fees && (
-                <Card title="💳 Fee Status" style={{ marginBottom:16 }}>
-                  <div style={{ display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
-                    <div style={{ flex:1, minWidth:160 }}>
-                      <div style={{ height:8, background:"var(--line)", borderRadius:4, overflow:"hidden", marginBottom:8 }}>
-                        <div style={{ height:"100%", width:`${s.fees.total > 0 ? Math.round((s.fees.paid / s.fees.total) * 100) : 0}%`, background:"var(--good)", borderRadius:4, transition:"width .5s" }} />
-                      </div>
-                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12 }}>
-                        <span style={{ color:"var(--good)" }}>Paid ₹{s.fees.paid.toLocaleString("en-IN")}</span>
-                        <span style={{ color:"var(--muted)" }}>Total ₹{s.fees.total.toLocaleString("en-IN")}</span>
-                      </div>
-                    </div>
-                    <div>
-                      {s.fees.pending > 0
-                        ? <span className="badge b-bad" style={{ fontSize:13, padding:"6px 14px" }}>₹{s.fees.pending.toLocaleString("en-IN")} pending</span>
-                        : <span className="badge b-good" style={{ fontSize:13, padding:"6px 14px" }}>✓ Fully paid</span>}
-                    </div>
-                  </div>
-                </Card>
-              )}
+              {/* ── Fee detail ────────────────────────────────────────────── */}
+              <Card title="💳 Fee Details" style={{ marginBottom:16 }}>
+                <Loading state={feesDetail}>
+                  {feeTerms.length === 0 ? (
+                    <div className="mini">No fee records.</div>
+                  ) : (
+                    <>
+                      {/* Summary bar */}
+                      {s.fees && (
+                        <div style={{ marginBottom:14 }}>
+                          <div style={{ height:8, background:"var(--line)", borderRadius:4, overflow:"hidden", marginBottom:6 }}>
+                            <div style={{ height:"100%", width:`${s.fees.total > 0 ? Math.round((s.fees.paid/s.fees.total)*100) : 0}%`, background:"var(--good)", borderRadius:4 }} />
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"space-between", fontSize:12 }}>
+                            <span style={{ color:"var(--good)" }}>Paid {money(s.fees.paid)}</span>
+                            <span style={{ color: s.fees.pending > 0 ? "var(--bad)" : "var(--muted)" }}>
+                              {s.fees.pending > 0 ? `Due ${money(s.fees.pending)}` : "✓ Fully paid"}
+                            </span>
+                            <span style={{ color:"var(--muted)" }}>Total {money(s.fees.total)}</span>
+                          </div>
+                        </div>
+                      )}
+                      {/* Term table */}
+                      <table style={{ fontSize:13 }}>
+                        <thead>
+                          <tr>
+                            <th>Fee Item</th>
+                            <th style={{ textAlign:"right" }}>Amount</th>
+                            <th style={{ textAlign:"right" }}>Paid</th>
+                            <th style={{ textAlign:"right" }}>Balance</th>
+                            <th style={{ textAlign:"center" }}>Status</th>
+                            <th>Due Date</th>
+                            <th>Receipt</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {feeTerms.map((t) => {
+                            const bal = Number(t.due) - Number(t.paid);
+                            const st  = bal <= 0 ? "Paid" : Number(t.paid) > 0 ? "Partial" : "Pending";
+                            return (
+                              <tr key={t.id}>
+                                <td><b>{t.term}</b></td>
+                                <td style={{ textAlign:"right" }}>{money(t.due)}</td>
+                                <td style={{ textAlign:"right", color:"var(--good)" }}>{money(t.paid)}</td>
+                                <td style={{ textAlign:"right", color: bal > 0 ? "var(--bad)" : "var(--muted)" }}>
+                                  {bal > 0 ? money(bal) : "—"}
+                                </td>
+                                <td style={{ textAlign:"center" }}>
+                                  <span className={`badge ${st === "Paid" ? "b-good" : st === "Partial" ? "b-warn" : "b-bad"}`}>{st}</span>
+                                </td>
+                                <td className="mini">{t.date || "—"}</td>
+                                <td className="mini">{t.receipt || "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </Loading>
+              </Card>
 
               {/* ── Remarks ───────────────────────────────────────────────── */}
               {s.notes && (
                 <Card title="📝 Teacher Remarks">
-                  <div style={{ fontSize:14, lineHeight:1.6, padding:"4px 0", color:"var(--txt)" }}>
-                    {s.notes}
-                  </div>
+                  <div style={{ fontSize:14, lineHeight:1.7, padding:"4px 0" }}>{s.notes}</div>
                 </Card>
               )}
             </>
