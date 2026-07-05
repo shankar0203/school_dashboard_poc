@@ -711,14 +711,27 @@ function Timetable() {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState(null);
 
-  const schedule = (editing ? draft : tt.data) || [];
-  const allSubs  = (subs.data || []).map((s) => s.name);
-  const PERIODS  = ["P1","P2","P3","P4","P5","P6"];
+  const schedule   = (editing ? draft : tt.data) || [];
+  const allSubs    = (subs.data || []).map((s) => s.name);
+  const maxPeriods = Math.min(8, Math.max(6, ...schedule.map((r) => (r.subjects || []).length)));
+  const PERIODS    = Array.from({ length: maxPeriods }, (_, i) => `P${i + 1}`);
 
   const startEdit = () => { setDraft(JSON.parse(JSON.stringify(tt.data || []))); setEditing(true); };
   const cancelEdit = () => { setDraft(null); setEditing(false); };
+
   const setCell = (di, pi, val) =>
     setDraft(draft.map((row, i) => i !== di ? row : { ...row, subjects: row.subjects.map((s, j) => j !== pi ? s : val) }));
+
+  const addPeriod = () => {
+    if (maxPeriods >= 8) return alert("Max 8 periods per day.");
+    setDraft(draft.map((row) => ({ ...row, subjects: [...(row.subjects || []), allSubs[0] || ""] })));
+  };
+  const removePeriod = () => {
+    const cur = Math.max(6, ...draft.map((r) => (r.subjects || []).length));
+    if (cur <= 6) return alert("Minimum 6 periods.");
+    setDraft(draft.map((row) => ({ ...row, subjects: (row.subjects || []).slice(0, -1) })));
+  };
+
   const save = async () => {
     await api.saveTimetable(MY_CLASS_ID, draft);
     setEditing(false); setDraft(null); tt.reload();
@@ -729,12 +742,14 @@ function Timetable() {
     <>
       <PageHead
         title={`Timetable — ${MY_CLASS}`}
-        sub="Weekly class schedule — editable"
+        sub={`Weekly class schedule · ${maxPeriods} periods/day`}
         right={
           editing ? (
-            <div style={{ display:"flex", gap:8 }}>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button className="btn ghost sm" onClick={removePeriod}>− Period</button>
+              <button className="btn ghost sm" onClick={addPeriod}>+ Period</button>
               <button className="btn ghost sm" onClick={cancelEdit}>Cancel</button>
-              <button className="btn sm" onClick={save}>Save changes</button>
+              <button className="btn sm" onClick={save}>Save</button>
             </div>
           ) : (
             <button className="btn sm" onClick={startEdit}>✏️ Edit timetable</button>
@@ -743,31 +758,41 @@ function Timetable() {
       />
       <Card>
         <Loading state={tt}>
-          <div className="ttg">
-            <div className="h">Day</div>
-            {PERIODS.map((p) => <div className="h" key={p}>{p}</div>)}
-            {schedule.map((row, di) => (
-              <Fragment key={row.day}>
-                <div className="dd">{row.day}</div>
-                {(row.subjects || []).map((sub, pi) => (
-                  <div className="c" key={pi}>
-                    {editing ? (
-                      <select
-                        value={sub}
-                        onChange={(e) => setCell(di, pi, e.target.value)}
-                        style={{ background:"var(--panel2)", border:"1px solid var(--line)", color:"var(--txt)", borderRadius:6, padding:"4px 5px", fontSize:11, width:"100%" }}
-                      >
-                        {allSubs.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    ) : (
-                      <b style={{ color: sc(sub), fontSize:12 }}>{sub}</b>
-                    )}
-                  </div>
-                ))}
-              </Fragment>
-            ))}
+          <div style={{ overflowX:"auto" }}>
+            <div className="ttg" style={{ gridTemplateColumns: `80px repeat(${maxPeriods}, 1fr)`, minWidth: maxPeriods > 6 ? 700 : "unset" }}>
+              <div className="h">Day</div>
+              {PERIODS.map((p) => <div className="h" key={p}>{p}</div>)}
+              {schedule.map((row, di) => (
+                <Fragment key={row.day}>
+                  <div className="dd">{row.day}</div>
+                  {Array.from({ length: maxPeriods }, (_, pi) => {
+                    const sub = (row.subjects || [])[pi] || "";
+                    return (
+                      <div className="c" key={pi}>
+                        {editing ? (
+                          <select
+                            value={sub}
+                            onChange={(e) => setCell(di, pi, e.target.value)}
+                            style={{ background:"var(--panel2)", border:"1px solid var(--line)", color:"var(--txt)", borderRadius:6, padding:"4px 5px", fontSize:11, width:"100%" }}
+                          >
+                            <option value="">—</option>
+                            {allSubs.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : (
+                          <b style={{ color: sub ? sc(sub) : "var(--muted)", fontSize:12 }}>{sub || "—"}</b>
+                        )}
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
           </div>
-          {editing && <div className="mini" style={{ marginTop:10 }}>Select subjects from dropdowns, then Save changes.</div>}
+          {editing && (
+            <div className="mini" style={{ marginTop:10 }}>
+              Use + / − Period buttons to add or remove periods (6–8). Select subjects then Save.
+            </div>
+          )}
         </Loading>
       </Card>
     </>
@@ -780,14 +805,56 @@ function StudentReport({ studentId, onBack }) {
   const attendance = useApi(() => api.getStudentAttendance(studentId), [studentId]);
   const allMarks   = useApi(() => api.getStudentMarksAll(studentId), [studentId]);
 
-  const s        = student.data;
-  const attRows  = attendance.data || [];
+  const s           = student.data;
+  const attRows     = attendance.data || [];
   const totalDays   = attRows.length;
   const presentDays = attRows.filter((r) => r.status === "present").length;
   const absentDays  = totalDays - presentDays;
   const attPct      = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
-  const examData    = allMarks.data || [];
-  const initials    = s ? s.name.split(" ").map((w) => w[0]).join("").slice(0, 2) : "??";
+  const absentDates = attRows.filter((r) => r.status === "absent").map((r) => {
+    const d = new Date(r.date);
+    return d.toLocaleDateString("en-IN", { day:"numeric", month:"short" });
+  });
+
+  const examData = allMarks.data || [];
+  const initials = s ? s.name.split(" ").map((w) => w[0]).join("").slice(0, 2) : "??";
+
+  // Build subject matrix: { subjectName -> { examId -> mark } }
+  const subjects = examData.length ? [...new Set(examData.flatMap((e) => e.marks.map((m) => m.subject)))] : [];
+  const subjectMatrix = {};
+  subjects.forEach((sub) => {
+    subjectMatrix[sub] = {};
+    examData.forEach((exam) => {
+      const m = exam.marks.find((x) => x.subject === sub);
+      subjectMatrix[sub][exam.examId] = m ? m.mark : null;
+    });
+  });
+
+  // Per-exam averages for trend
+  const examAvgs = examData.map((exam) => {
+    const valid = exam.marks.filter((m) => m.mark != null);
+    return { name: exam.examName, avg: valid.length ? Math.round(valid.reduce((a, m) => a + m.mark, 0) / valid.length) : null };
+  });
+
+  // Best / weakest subject (by latest exam with data)
+  const latestExam = examData[examData.length - 1];
+  const latestValid = latestExam ? latestExam.marks.filter((m) => m.mark != null) : [];
+  const bestSubj  = latestValid.length ? latestValid.reduce((a, b) => a.mark > b.mark ? a : b) : null;
+  const worstSubj = latestValid.length ? latestValid.reduce((a, b) => a.mark < b.mark ? a : b) : null;
+
+  // Overall grade from last exam avg
+  const latestAvg = examAvgs.length ? examAvgs[examAvgs.length - 1].avg : null;
+  const overallGrade = latestAvg != null ? config.academics.grade(latestAvg) : "—";
+
+  // Trend: compare last two exams
+  const trend = examAvgs.length >= 2
+    ? (examAvgs[examAvgs.length - 1].avg || 0) - (examAvgs[examAvgs.length - 2].avg || 0)
+    : 0;
+  const trendIcon = trend > 2 ? "↑" : trend < -2 ? "↓" : "→";
+  const trendColor = trend > 2 ? "var(--good)" : trend < -2 ? "var(--bad)" : "var(--muted)";
+
+  const markColor = (v) => v >= 80 ? "#4ade80" : v >= 60 ? "#34d1bf" : v >= 35 ? "#ffb454" : "#ff5c7c";
+  const markBg    = (v) => v == null ? "transparent" : v >= 80 ? "rgba(74,222,128,0.15)" : v >= 60 ? "rgba(52,209,191,0.12)" : v >= 35 ? "rgba(255,180,84,0.15)" : "rgba(255,92,124,0.15)";
 
   return (
     <>
@@ -800,125 +867,243 @@ function StudentReport({ studentId, onBack }) {
         <Loading state={student}>
           {s && (
             <>
-              {/* Header card */}
-              <Card style={{ marginBottom:16 }}>
-                <div style={{ display:"flex", gap:20, alignItems:"center", flexWrap:"wrap" }}>
-                  <div style={{ width:64, height:64, borderRadius:"50%", background:"linear-gradient(135deg,var(--accent),#34d1bf)", color:"#fff", fontWeight:800, fontSize:22, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    {initials}
+              {/* ── Print-only school header ───────────────────────────────── */}
+              <div className="print-only" style={{ textAlign:"center", marginBottom:20, paddingBottom:16, borderBottom:"2px solid #ddd" }}>
+                <div style={{ fontSize:20, fontWeight:800 }}>{config.school.name}</div>
+                <div style={{ fontSize:13, color:"#666" }}>Student Progress Report · {config.school.academicYear}</div>
+              </div>
+
+              {/* ── Identity card ─────────────────────────────────────────── */}
+              <div style={{
+                background:"linear-gradient(135deg, rgba(124,92,255,0.1) 0%, rgba(52,209,191,0.06) 100%)",
+                border:"1px solid rgba(124,92,255,0.25)", borderRadius:16, padding:"20px 24px", marginBottom:16,
+                display:"flex", gap:20, alignItems:"center", flexWrap:"wrap",
+              }}>
+                <div style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,#7c5cff,#34d1bf)", color:"#fff", fontWeight:800, fontSize:26, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 4px 16px rgba(124,92,255,0.35)" }}>
+                  {initials}
+                </div>
+                <div style={{ flex:1, minWidth:180 }}>
+                  <div style={{ fontSize:22, fontWeight:800, marginBottom:4 }}>{s.name}</div>
+                  <div className="mini" style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+                    <span>📚 Class {s.class_name}</span>
+                    <span>🔢 Roll {s.roll_no}</span>
+                    {s.gender && <span>👤 {s.gender}</span>}
+                    {s.blood_group && <span>🩸 {s.blood_group}</span>}
+                    {s.dob && <span>🎂 {new Date(s.dob).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}</span>}
                   </div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:20, fontWeight:800 }}>{s.name}</div>
-                    <div className="mini" style={{ marginTop:3 }}>
-                      Class {s.class_name} · Roll {s.roll_no} · {s.gender || "—"} · Blood {s.blood_group || "—"}
+                  <div className="mini" style={{ marginTop:4, color:"var(--muted)" }}>
+                    Guardian: <b style={{ color:"var(--txt)" }}>{s.guardian_name || "—"}</b>
+                    {s.guardian_relation && ` (${s.guardian_relation})`} · {s.guardian_phone || "—"}
+                  </div>
+                  {s.admission_date && (
+                    <div className="mini" style={{ marginTop:2, color:"var(--muted)" }}>
+                      Admitted: {new Date(s.admission_date).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}
                     </div>
-                    <div className="mini" style={{ marginTop:2 }}>
-                      Guardian: {s.guardian_name || "—"} ({s.guardian_relation || "—"}) · {s.guardian_phone || "—"}
+                  )}
+                </div>
+                {/* Quick stat pills */}
+                <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end" }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                    <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
+                      <div style={{ fontSize:24, fontWeight:800, color: attPct >= 85 ? "var(--good)" : attPct >= 75 ? "var(--warn)" : "var(--bad)" }}>{attPct}%</div>
+                      <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Attendance</div>
                     </div>
-                    {s.notes && (
-                      <div style={{ marginTop:8, fontSize:12, background:"rgba(255,180,84,0.1)", border:"1px solid rgba(255,180,84,0.3)", borderRadius:8, padding:"6px 12px" }}>
-                        📝 Remarks: {s.notes}
+                    {latestAvg != null && (
+                      <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
+                        <div style={{ fontSize:24, fontWeight:800, color: markColor(latestAvg) }}>{latestAvg}</div>
+                        <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Latest avg</div>
+                      </div>
+                    )}
+                    <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
+                      <div style={{ fontSize:24, fontWeight:800, color: overallGrade === "F" ? "var(--bad)" : overallGrade.includes("A") ? "var(--good)" : "var(--warn)" }}>{overallGrade}</div>
+                      <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Grade</div>
+                    </div>
+                    {s.fees && (
+                      <div style={{ textAlign:"center", background:"var(--panel2)", borderRadius:12, padding:"10px 18px", minWidth:80 }}>
+                        <div style={{ fontSize:14, fontWeight:800, color: s.fees.pending > 0 ? "var(--bad)" : "var(--good)" }}>
+                          {s.fees.pending > 0 ? "Due" : "Paid"}
+                        </div>
+                        <div style={{ fontSize:10, color:"var(--muted)", marginTop:2 }}>Fees</div>
                       </div>
                     )}
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:28, fontWeight:800, color: attPct >= 85 ? "var(--good)" : attPct >= 75 ? "var(--warn)" : "var(--bad)" }}>
-                      {attPct}%
+                  {trend !== 0 && (
+                    <div style={{ fontSize:12, color:trendColor, fontWeight:700 }}>
+                      {trendIcon} {Math.abs(trend)} pts vs last exam
                     </div>
-                    <div className="mini">attendance</div>
-                    <div className="mini" style={{ marginTop:4 }}>{presentDays}P · {absentDays}A · {totalDays} days</div>
-                  </div>
+                  )}
                 </div>
-              </Card>
+              </div>
 
-              {/* Attendance calendar */}
-              <Card title="📅 Attendance Record" style={{ marginBottom:16 }}>
-                <Loading state={attendance}>
-                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", padding:"4px 0" }}>
-                    {attRows.map((r) => {
-                      const day = new Date(r.date).getDate();
-                      const p   = r.status === "present";
-                      return (
-                        <div key={r.date} title={r.date} style={{
-                          width:34, height:34, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center",
-                          fontSize:11, fontWeight:600,
-                          background: p ? "rgba(74,222,128,0.15)" : "rgba(255,92,124,0.15)",
-                          color: p ? "var(--good)" : "var(--bad)",
-                          border: `1px solid ${p ? "rgba(74,222,128,0.35)" : "rgba(255,92,124,0.35)"}`,
-                        }}>
-                          {day}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display:"flex", gap:14, marginTop:10, fontSize:12 }}>
-                    <span style={{ color:"var(--good)" }}>● Present: {presentDays}</span>
-                    <span style={{ color:"var(--bad)" }}>● Absent: {absentDays}</span>
-                    <span style={{ color:"var(--muted)" }}>Total: {totalDays} days</span>
-                  </div>
-                </Loading>
-              </Card>
-
-              {/* Marks per exam */}
-              <Card title="📊 Exam Results" style={{ marginBottom:16 }}>
-                <Loading state={allMarks}>
-                  {examData.length === 0 ? (
-                    <div className="mini">No exam results yet.</div>
-                  ) : (
-                    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-                      {examData.map((exam) => {
-                        const valid = exam.marks.filter((m) => m.mark != null);
-                        const avg   = valid.length ? Math.round(valid.reduce((a, m) => a + m.mark, 0) / valid.length) : null;
-                        const grade = avg != null ? config.academics.grade(avg) : "—";
+              {/* ── Highlights row ────────────────────────────────────────── */}
+              {(bestSubj || worstSubj) && (
+                <div className="grid g3" style={{ marginBottom:16, gap:12 }}>
+                  {bestSubj && (
+                    <div style={{ background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)", borderRadius:12, padding:"12px 16px" }}>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginBottom:4 }}>🏆 STRONGEST SUBJECT</div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{bestSubj.subject}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"var(--good)", marginTop:2 }}>{bestSubj.mark}/100</div>
+                    </div>
+                  )}
+                  {worstSubj && worstSubj.subject !== bestSubj?.subject && (
+                    <div style={{ background:"rgba(255,92,124,0.08)", border:"1px solid rgba(255,92,124,0.25)", borderRadius:12, padding:"12px 16px" }}>
+                      <div style={{ fontSize:11, color:"var(--muted)", marginBottom:4 }}>⚠ NEEDS ATTENTION</div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{worstSubj.subject}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:"var(--bad)", marginTop:2 }}>{worstSubj.mark}/100</div>
+                    </div>
+                  )}
+                  <div style={{ background:"rgba(90,169,255,0.08)", border:"1px solid rgba(90,169,255,0.25)", borderRadius:12, padding:"12px 16px" }}>
+                    <div style={{ fontSize:11, color:"var(--muted)", marginBottom:6 }}>📈 EXAM TREND</div>
+                    <div style={{ display:"flex", gap:6, alignItems:"flex-end", height:40 }}>
+                      {examAvgs.map((e, i) => {
+                        const h = e.avg != null ? Math.max(6, Math.round((e.avg / 100) * 36)) : 4;
                         return (
-                          <div key={exam.examId}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                              <b style={{ fontSize:13 }}>{exam.examName}</b>
-                              {avg != null && (
-                                <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                                  <span className="mini">Avg: {avg}%</span>
-                                  <span className={`badge ${avg >= 80 ? "b-good" : avg >= 35 ? "b-warn" : "b-bad"}`}>{grade}</span>
-                                </div>
-                              )}
-                            </div>
-                            {exam.marks.map((m) => {
-                              const val   = m.mark != null ? m.mark : 0;
-                              const color = val >= 80 ? "#4ade80" : val >= 60 ? "#34d1bf" : val >= 35 ? "#ffb454" : "#ff5c7c";
-                              return (
-                                <div key={m.subject} className="subline">
-                                  <div className="s-nm" style={{ display:"flex", alignItems:"center", gap:6 }}>
-                                    <span style={{ width:8, height:8, borderRadius:2, background:sc(m.subject), display:"inline-block" }} />
-                                    {m.subject}
-                                  </div>
-                                  <div className="bar" style={{ flex:1 }}>
-                                    <i style={{ width:(m.mark != null ? m.mark : 0) + "%", background:color }} />
-                                  </div>
-                                  <div className="s-mk" style={{ color }}>
-                                    {m.mark != null ? m.mark : "—"}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                          <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                            <div style={{ width:"100%", height:h, background: e.avg != null ? markColor(e.avg) : "var(--line)", borderRadius:"3px 3px 0 0", opacity:0.85 }} />
+                            <div style={{ fontSize:9, color:"var(--muted)", textAlign:"center", lineHeight:1.2 }}>{e.name.split(" ").slice(0,2).join(" ")}</div>
                           </div>
                         );
                       })}
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Performance matrix ────────────────────────────────────── */}
+              {examData.length > 0 && subjects.length > 0 && (
+                <Card title="📊 Subject-wise Performance" style={{ marginBottom:16 }}>
+                  <Loading state={allMarks}>
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ fontSize:13 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ minWidth:90 }}>Subject</th>
+                            {examData.map((e) => <th key={e.examId} style={{ textAlign:"center", minWidth:80 }}>{e.examName}</th>)}
+                            <th style={{ textAlign:"center" }}>Best</th>
+                            <th style={{ textAlign:"center" }}>Avg</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {subjects.map((sub) => {
+                            const marks = examData.map((e) => subjectMatrix[sub][e.examId]);
+                            const valid  = marks.filter((m) => m != null);
+                            const best   = valid.length ? Math.max(...valid) : null;
+                            const avg    = valid.length ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : null;
+                            return (
+                              <tr key={sub}>
+                                <td>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                    <span style={{ width:8, height:8, borderRadius:2, background:sc(sub), display:"inline-block", flexShrink:0 }} />
+                                    <b>{sub}</b>
+                                  </div>
+                                </td>
+                                {marks.map((m, i) => (
+                                  <td key={i} style={{ textAlign:"center", background:markBg(m), fontWeight:600, color: m != null ? markColor(m) : "var(--muted)" }}>
+                                    {m != null ? m : "—"}
+                                  </td>
+                                ))}
+                                <td style={{ textAlign:"center", fontWeight:700, color: best != null ? markColor(best) : "var(--muted)" }}>{best ?? "—"}</td>
+                                <td style={{ textAlign:"center", color: avg != null ? markColor(avg) : "var(--muted)" }}>{avg ?? "—"}</td>
+                              </tr>
+                            );
+                          })}
+                          {/* Total row */}
+                          <tr style={{ borderTop:"2px solid var(--line)", background:"var(--panel2)" }}>
+                            <td><b>Average</b></td>
+                            {examAvgs.map((e, i) => (
+                              <td key={i} style={{ textAlign:"center", fontWeight:700, color: e.avg != null ? markColor(e.avg) : "var(--muted)" }}>
+                                {e.avg ?? "—"}
+                              </td>
+                            ))}
+                            <td />
+                            <td style={{ textAlign:"center", fontWeight:800, color: latestAvg != null ? markColor(latestAvg) : "var(--muted)" }}>
+                              {latestAvg ?? "—"}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </Loading>
+                </Card>
+              )}
+
+              {/* ── Attendance ────────────────────────────────────────────── */}
+              <Card title="📅 Attendance Record" style={{ marginBottom:16 }}>
+                <Loading state={attendance}>
+                  <div className="grid g2" style={{ gap:16 }}>
+                    {/* Calendar */}
+                    <div>
+                      <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:10 }}>
+                        {attRows.map((r) => {
+                          const day = new Date(r.date).getDate();
+                          const p   = r.status === "present";
+                          return (
+                            <div key={r.date} title={r.date} style={{
+                              width:32, height:32, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center",
+                              fontSize:11, fontWeight:600,
+                              background: p ? "rgba(74,222,128,0.15)" : "rgba(255,92,124,0.15)",
+                              color: p ? "var(--good)" : "var(--bad)",
+                              border: `1px solid ${p ? "rgba(74,222,128,0.3)" : "rgba(255,92,124,0.3)"}`,
+                            }}>
+                              {day}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ display:"flex", gap:14, fontSize:12 }}>
+                        <span style={{ color:"var(--good)" }}>✓ Present: {presentDays}</span>
+                        <span style={{ color:"var(--bad)" }}>✗ Absent: {absentDays}</span>
+                        <span style={{ color:"var(--muted)" }}>Total: {totalDays}</span>
+                      </div>
+                    </div>
+                    {/* Absent dates list */}
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:600, marginBottom:8, color:"var(--bad)" }}>
+                        Absent dates ({absentDates.length})
+                      </div>
+                      {absentDates.length === 0 ? (
+                        <div style={{ fontSize:13, color:"var(--good)" }}>🎉 No absences!</div>
+                      ) : (
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                          {absentDates.map((d, i) => (
+                            <span key={i} style={{ fontSize:11, background:"rgba(255,92,124,0.12)", color:"var(--bad)", border:"1px solid rgba(255,92,124,0.3)", borderRadius:6, padding:"3px 8px" }}>
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </Loading>
               </Card>
 
-              {/* Fee summary */}
+              {/* ── Fee breakdown ─────────────────────────────────────────── */}
               {s.fees && (
-                <Card title="💳 Fee Status">
-                  <div style={{ display:"flex", gap:24, alignItems:"center" }}>
-                    <div>
-                      <div style={{ fontSize:22, fontWeight:800, color: s.fees.pending > 0 ? "var(--bad)" : "var(--good)" }}>
-                        ₹{s.fees.paid.toLocaleString("en-IN")}
+                <Card title="💳 Fee Status" style={{ marginBottom:16 }}>
+                  <div style={{ display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+                    <div style={{ flex:1, minWidth:160 }}>
+                      <div style={{ height:8, background:"var(--line)", borderRadius:4, overflow:"hidden", marginBottom:8 }}>
+                        <div style={{ height:"100%", width:`${s.fees.total > 0 ? Math.round((s.fees.paid / s.fees.total) * 100) : 0}%`, background:"var(--good)", borderRadius:4, transition:"width .5s" }} />
                       </div>
-                      <div className="mini">paid of ₹{s.fees.total.toLocaleString("en-IN")}</div>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:12 }}>
+                        <span style={{ color:"var(--good)" }}>Paid ₹{s.fees.paid.toLocaleString("en-IN")}</span>
+                        <span style={{ color:"var(--muted)" }}>Total ₹{s.fees.total.toLocaleString("en-IN")}</span>
+                      </div>
                     </div>
-                    {s.fees.pending > 0
-                      ? <span className="badge b-bad">₹{s.fees.pending.toLocaleString("en-IN")} pending</span>
-                      : <span className="badge b-good">Fully paid</span>}
+                    <div>
+                      {s.fees.pending > 0
+                        ? <span className="badge b-bad" style={{ fontSize:13, padding:"6px 14px" }}>₹{s.fees.pending.toLocaleString("en-IN")} pending</span>
+                        : <span className="badge b-good" style={{ fontSize:13, padding:"6px 14px" }}>✓ Fully paid</span>}
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* ── Remarks ───────────────────────────────────────────────── */}
+              {s.notes && (
+                <Card title="📝 Teacher Remarks">
+                  <div style={{ fontSize:14, lineHeight:1.6, padding:"4px 0", color:"var(--txt)" }}>
+                    {s.notes}
                   </div>
                 </Card>
               )}
@@ -928,10 +1113,13 @@ function StudentReport({ studentId, onBack }) {
       </div>
 
       <style>{`
+        .print-only { display: none; }
         @media print {
-          .no-print, .left-nav, .top-bar, .layout-shell > *:not(#student-report) { display: none !important; }
-          #student-report { padding: 24px; }
+          .no-print, .left-nav, .top-bar { display: none !important; }
+          .print-only { display: block !important; }
+          #student-report { padding: 20px; }
           body, .layout-shell { background: white !important; color: #111 !important; }
+          .card { border: 1px solid #ddd !important; box-shadow: none !important; }
         }
       `}</style>
     </>
