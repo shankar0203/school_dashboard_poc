@@ -50,7 +50,9 @@ echo "schema loaded"
 echo ""
 echo "=== [5/6] Loading DB seed data ==="
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" < "$APP_DIR/db/seed.sql"
-echo "seed loaded"
+echo "  seed.sql loaded (school, classes, subjects, users, first 6 students)"
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" < "$APP_DIR/db/seed_extra.sql"
+echo "  seed_extra.sql loaded (50+ students, marks, fees, attendance)"
 
 # ── [6/6] Configure Nginx + start PM2 ─────────────────────────────────────
 echo ""

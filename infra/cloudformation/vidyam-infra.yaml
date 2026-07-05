@@ -6,18 +6,15 @@ Description: >-
   ACM and R53 wired manually after deploy.
 
 # ============================================================
-# DEPLOY ORDER
-# 1. Deploy this stack and note the Outputs
-# 2. SSH: ssh -i key.pem ubuntu@<EC2PublicIP>
-# 3. Wait for UserData to finish: tail -f /var/log/vidyam-deps.log
-# 4. cd /home/ubuntu/vidyam && bash scripts/setup-env.sh  (enter DB pw once)
-# 5. npm install && npm run build
-# 6. cd api && npm install
-# 7. mysql -h <RDSEndpoint> -u vidyam_admin -p < db/schema.sql
-# 8. mysql -h <RDSEndpoint> -u vidyam_admin -p < db/seed.sql
-# 9. pm2 start server.js --name vidyam-api && pm2 save && pm2 startup
-# 10. Configure Nginx + systemctl start nginx
-# 11. Point R53 ALIAS to ALBDNSName output
+# DEPLOY ORDER (3 commands after stack is CREATE_COMPLETE)
+# 1. Deploy this stack — wait for CREATE_COMPLETE, note Outputs
+# 2. SSH:  ssh -i key.pem ubuntu@<EC2PublicIP from Outputs>
+# 3. Wait for deps: tail -f /var/log/vidyam-deps.log  (done when you see "Dependencies installed")
+# 4. cd /home/ubuntu/vidyam
+#    sudo bash scripts/setup-env.sh     ← pulls CFN outputs, prompts for DB password
+#    sudo bash scripts/setup-app.sh     ← npm install, build, schema+seed, Nginx, PM2
+# 5. Point Route 53 ALIAS → ALBDNSName output
+#    (HTTPS: attach ACM cert to ALB HTTPS listener manually after deploy)
 # ============================================================
 
 Parameters:
@@ -485,12 +482,9 @@ Outputs:
     Description: Steps after CREATE_COMPLETE
     Value: >-
       1) ssh -i key.pem ubuntu@EC2PublicIP
-      2) tail -f /var/log/vidyam-deps.log  (wait for deps to finish)
-      3) cd /home/ubuntu/vidyam && bash scripts/setup-env.sh  (enter DB pw once)
-      4) npm install && npm run build
-      5) cd api && npm install
-      6) mysql -h RDSEndpoint -u vidyam_admin -p < db/schema.sql
-      7) mysql -h RDSEndpoint -u vidyam_admin -p < db/seed.sql
-      8) pm2 start server.js --name vidyam-api && pm2 save && pm2 startup
-      9) Configure Nginx and run systemctl start nginx
-      10) Add R53 ALIAS record pointing to ALBDNSName
+      2) tail -f /var/log/vidyam-deps.log   (wait — ends with "Dependencies installed")
+      3) cd /home/ubuntu/vidyam
+      4) sudo bash scripts/setup-env.sh     (auto-reads CFN outputs, prompts DB password once)
+      5) sudo bash scripts/setup-app.sh     (build, schema, seed, Nginx, PM2 — fully automated)
+      6) Add R53 ALIAS record pointing to ALBDNSName
+      7) Attach ACM cert to ALB HTTPS:443 listener for SSL
