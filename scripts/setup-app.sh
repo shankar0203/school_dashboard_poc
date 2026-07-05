@@ -53,6 +53,8 @@ mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" < "$APP_DIR/db/seed.sql"
 echo "  seed.sql loaded (school, classes, subjects, users, first 6 students)"
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" < "$APP_DIR/db/seed_extra.sql"
 echo "  seed_extra.sql loaded (50+ students, marks, fees, attendance)"
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" < "$APP_DIR/db/migration_user_linking.sql"
+echo "  migration_user_linking.sql run (user_id on students, cognito_sub on users)"
 
 # ── [6/6] Configure Nginx + start PM2 ─────────────────────────────────────
 echo ""
