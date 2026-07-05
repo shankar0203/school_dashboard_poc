@@ -22,7 +22,7 @@ const allowList = (process.env.CORS_ORIGIN || "")
 app.use(
   cors({
     origin: allowList.length && !allowList.includes("*") ? allowList : true,
-    methods: ["GET", "POST", "PUT"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -54,6 +54,7 @@ app.get("/health", async (_req, res) => {
 // requireAuth sets req.user, req.role and req.schoolId from the verified JWT.
 app.use(requireAuth);
 
+app.use("/me",       require("./routes/me"));
 app.use("/students", require("./routes/students"));
 app.use("/timetable", require("./routes/timetable"));
 app.use("/attendance", require("./routes/attendance"));

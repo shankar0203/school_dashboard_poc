@@ -9,8 +9,15 @@ import StudentForm from "../components/StudentForm.jsx";
 import StudentProfile from "../components/StudentProfile.jsx";
 
 const { classes } = config.academics;
-const MY_CLASS = "8-A";
-const MY_CLASS_ID = classes.indexOf(MY_CLASS) + 1; // seeded class ids match config order
+
+// Resolve class identity from /auth/me.
+// Falls back to 8-A so the app works before the admin links the teacher account.
+function useMyClass() {
+  const { meData } = useApp();
+  const cls  = meData?.className  || "8-A";
+  const clsId = meData?.classId   || (classes.indexOf("8-A") + 1);
+  return { MY_CLASS: cls, MY_CLASS_ID: clsId };
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 const GRADE_COLORS = {
@@ -64,13 +71,14 @@ function GradeBar({ gradeMap, total }) {
 // ─── Dashboard ──────────────────────────────────────────────────────────────
 function Dashboard() {
   const { setView } = useApp();
+  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
   const today = getLocalDateStr();
   const todayLabel = getLocalDateLabel();
 
   // API calls
-  const list      = useApi(() => api.listStudents(MY_CLASS), []);
+  const list      = useApi(() => api.listStudents(MY_CLASS), [MY_CLASS]);
   const exams     = useApi(() => api.getExams(), []);
-  const todayAtt  = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, today), [today]);
+  const todayAtt  = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, today), [MY_CLASS_ID, today]);
 
   const students  = list.data || [];
   const examList  = exams.data || [];
@@ -78,7 +86,7 @@ function Dashboard() {
 
   const results = useApi(
     () => latestExam ? api.getClassResults(latestExam.id, MY_CLASS_ID) : Promise.resolve([]),
-    [latestExam && latestExam.id]
+    [latestExam && latestExam.id, MY_CLASS_ID]
   );
 
   // ── today's attendance
@@ -374,8 +382,9 @@ function Dashboard() {
 
 // ─── Attendance Entry ────────────────────────────────────────────────────────
 function AttendanceEntry() {
+  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
   const [date, setDate] = useState(getLocalDateStr());
-  const day = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, date), [date]);
+  const day = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, date), [MY_CLASS_ID, date]);
   const rows = day.data || [];
   const [marks, setMarks] = useState({});        // studentId -> 'present'|'absent'
   // current status = local edit, else loaded status, else default present
@@ -426,7 +435,8 @@ function AttendanceEntry() {
 
 // ─── Students ────────────────────────────────────────────────────────────────
 function Students() {
-  const list = useApi(() => api.listStudents(MY_CLASS), []);
+  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
+  const list = useApi(() => api.listStudents(MY_CLASS), [MY_CLASS]);
   const [form, setForm] = useState(null);      // {student} | {student:null} when open
   const [profileId, setProfileId] = useState(null);
   const done = () => { setForm(null); list.reload(); };
@@ -706,7 +716,8 @@ const SUBJ_COLORS_TT = {
 const sc = (s) => SUBJ_COLORS_TT[s] || "#9b7bff";
 
 function Timetable() {
-  const tt   = useApi(() => api.getTimetableDB(MY_CLASS_ID), []);
+  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
+  const tt   = useApi(() => api.getTimetableDB(MY_CLASS_ID), [MY_CLASS_ID]);
   const subs = useApi(() => api.getSubjects(), []);
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState(null);
@@ -871,6 +882,79 @@ function StudentReport({ studentId, onBack }) {
   const money     = (v) => "₹" + Number(v||0).toLocaleString("en-IN");
   const fmtDate   = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "—";
 
+  // ── Month-wise attendance ──────────────────────────────────────────────────
+  const monthMap = {};
+  attRows.forEach((r) => {
+    const m = r.date.slice(0, 7);
+    if (!monthMap[m]) monthMap[m] = { present:0, absent:0, late:0 };
+    monthMap[m][r.status] = (monthMap[m][r.status] || 0) + 1;
+  });
+  const months = Object.entries(monthMap).map(([key, v]) => {
+    const total = (v.present||0) + (v.absent||0) + (v.late||0);
+    const pct   = total ? Math.round(((v.present||0) / total) * 100) : 0;
+    const d     = new Date(key + "-01");
+    return { key, label: d.toLocaleDateString("en-IN", { month:"short", year:"numeric" }), ...v, total, pct };
+  }).sort((a, b) => a.key.localeCompare(b.key));
+
+  // ── Consecutive absences (runs of 3+) ─────────────────────────────────────
+  const sortedAbsent = attRows.filter((r) => r.status === "absent").map((r) => r.date).sort();
+  const consecutiveRuns = [];
+  let _run = [];
+  sortedAbsent.forEach((d, i) => {
+    if (i === 0) { _run = [d]; return; }
+    const diff = (new Date(d) - new Date(sortedAbsent[i - 1])) / 86400000;
+    if (diff === 1) { _run.push(d); }
+    else { if (_run.length >= 3) consecutiveRuns.push([..._run]); _run = [d]; }
+  });
+  if (_run.length >= 3) consecutiveRuns.push(_run);
+
+  // ── Per-subject trend (↑↓→ comparing last two exams) ─────────────────────
+  const subjectTrends = {};
+  subjects.forEach((sub) => {
+    const marks = examData.map((e) => subjectMatrix[sub][e.examId]).filter((m) => m != null);
+    if (marks.length >= 2) {
+      const diff = marks[marks.length - 1] - marks[marks.length - 2];
+      subjectTrends[sub] = diff > 3 ? "up" : diff < -3 ? "down" : "stable";
+    }
+  });
+
+  // ── Risk flags ─────────────────────────────────────────────────────────────
+  const riskFlags = [];
+  if (attPct < 75)
+    riskFlags.push({ level:"bad",  msg: `Attendance ${attPct}% — below 75% minimum. Urgent follow-up needed.` });
+  else if (attPct < 85)
+    riskFlags.push({ level:"warn", msg: `Attendance ${attPct}% — below recommended 85%.` });
+  if (consecutiveRuns.length > 0)
+    riskFlags.push({ level:"warn", msg: `${consecutiveRuns.length} instance(s) of 3+ consecutive absences detected.` });
+  const failedSubs = subjects.filter((sub) => {
+    const last = examData[examData.length - 1];
+    const m    = last ? subjectMatrix[sub][last.examId] : null;
+    return m != null && m < PASS_MARK;
+  });
+  if (failedSubs.length > 0)
+    riskFlags.push({ level:"bad",  msg: `Failed in ${failedSubs.length} subject${failedSubs.length > 1 ? "s" : ""}: ${failedSubs.join(", ")}.` });
+  if (s && s.fees && s.fees.pending > 0)
+    riskFlags.push({ level:"warn", msg: `Fee pending: ${money(s.fees.pending)}.` });
+
+  // ── Auto-narrative ─────────────────────────────────────────────────────────
+  const narrative = s ? (() => {
+    const parts = [];
+    parts.push(`${s.name} is enrolled in Class ${s.class_name} (Roll ${s.roll_no}${s.admission_no ? `, Adm. No. ${s.admission_no}` : ""}).`);
+    if (totalDays > 0) {
+      const attLabel = attPct >= 85 ? "Good" : attPct >= 75 ? "Satisfactory — needs improvement" : "Poor — immediate attention required";
+      parts.push(`Attendance this term is ${attPct}% (${presentDays}/${totalDays} days) — ${attLabel}.`);
+    }
+    if (latestAvg != null) {
+      const perfLabel = latestAvg >= 80 ? "Excellent" : latestAvg >= 60 ? "Good" : latestAvg >= PASS_MARK ? "Satisfactory" : "Below passing — needs support";
+      parts.push(`Academic performance is ${perfLabel} with a latest exam average of ${latestAvg}% (Grade ${overallGrade}).`);
+    }
+    if (bestSubj && worstSubj && bestSubj.subject !== worstSubj.subject)
+      parts.push(`Strongest in ${bestSubj.subject} (${bestSubj.best}/100); needs focus on ${worstSubj.subject} (avg ${worstSubj.avg}/100).`);
+    if (s.fees)
+      parts.push(`Fee status: ${s.fees.pending > 0 ? `${money(s.fees.pending)} pending out of ${money(s.fees.total)} total` : "Fully paid"}.`);
+    return parts.join(" ");
+  })() : "";
+
   return (
     <>
       <div className="no-print" style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
@@ -964,6 +1048,34 @@ function StudentReport({ studentId, onBack }) {
                 </div>
               </div>
 
+              {/* ── Risk flags ───────────────────────────────────────────── */}
+              {riskFlags.length > 0 && (
+                <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:14 }}>
+                  {riskFlags.map((f, i) => (
+                    <div key={i} style={{
+                      display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:10, fontSize:13,
+                      background: f.level === "bad" ? "rgba(255,92,124,0.08)" : "rgba(255,180,84,0.08)",
+                      border: `1px solid ${f.level === "bad" ? "rgba(255,92,124,0.3)" : "rgba(255,180,84,0.3)"}`,
+                      color: f.level === "bad" ? "var(--bad)" : "var(--warn)",
+                    }}>
+                      <span style={{ fontSize:16, flexShrink:0 }}>{f.level === "bad" ? "🔴" : "🟡"}</span>
+                      <span>{f.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Auto narrative ────────────────────────────────────────── */}
+              {narrative && (
+                <div style={{
+                  background:"var(--panel2)", border:"1px solid var(--line)", borderRadius:12,
+                  padding:"14px 18px", marginBottom:16, fontSize:13, lineHeight:1.8, color:"var(--txt)",
+                }}>
+                  <div style={{ fontSize:11, fontWeight:700, color:"var(--muted)", marginBottom:6, letterSpacing:0.5 }}>📋 SUMMARY</div>
+                  {narrative}
+                </div>
+              )}
+
               {/* ── Highlights row ────────────────────────────────────────── */}
               {subjectBest.length > 0 && (
                 <div className="grid g3" style={{ marginBottom:16, gap:12 }}>
@@ -1013,6 +1125,7 @@ function StudentReport({ studentId, onBack }) {
                             {examData.map((e) => <th key={e.examId} style={{ textAlign:"center", minWidth:80 }}>{e.examName}</th>)}
                             <th style={{ textAlign:"center" }}>Best</th>
                             <th style={{ textAlign:"center" }}>Avg</th>
+                            <th style={{ textAlign:"center" }}>Trend</th>
                             <th style={{ textAlign:"center" }}>Status</th>
                           </tr>
                         </thead>
@@ -1038,6 +1151,12 @@ function StudentReport({ studentId, onBack }) {
                                 ))}
                                 <td style={{ textAlign:"center", fontWeight:700, color: best != null ? markColor(best) : "var(--muted)" }}>{best ?? "—"}</td>
                                 <td style={{ textAlign:"center", color: avg != null ? markColor(avg) : "var(--muted)" }}>{avg ?? "—"}</td>
+                                <td style={{ textAlign:"center", fontSize:16, fontWeight:700 }}>
+                                  {subjectTrends[sub] === "up"     ? <span style={{ color:"var(--good)" }}>↑</span>
+                                  : subjectTrends[sub] === "down"  ? <span style={{ color:"var(--bad)" }}>↓</span>
+                                  : subjectTrends[sub] === "stable"? <span style={{ color:"var(--muted)" }}>→</span>
+                                  : <span className="mini">—</span>}
+                                </td>
                                 <td style={{ textAlign:"center" }}>
                                   {valid.length > 0
                                     ? <span className={`badge ${passing ? "b-good" : "b-bad"}`}>{passing ? "Pass" : "Fail"}</span>
@@ -1054,7 +1173,7 @@ function StudentReport({ studentId, onBack }) {
                             ))}
                             <td />
                             <td style={{ textAlign:"center", fontWeight:800, color: latestAvg != null ? markColor(latestAvg) : "var(--muted)" }}>{latestAvg ?? "—"}</td>
-                            <td />
+                            <td /><td />
                           </tr>
                           {/* Pass/fail summary row */}
                           <tr style={{ background:"var(--panel2)" }}>
@@ -1065,7 +1184,7 @@ function StudentReport({ studentId, onBack }) {
                                 {e.failed > 0 && <span style={{ color:"var(--bad)" }}> / {e.failed}F</span>}
                               </td>
                             ))}
-                            <td colSpan={3} style={{ textAlign:"center", fontSize:11, color:"var(--muted)" }}>
+                            <td colSpan={4} style={{ textAlign:"center", fontSize:11, color:"var(--muted)" }}>
                               Total {totalEarned}/{totalPossible} · {overallPct ?? "—"}%
                             </td>
                           </tr>
@@ -1113,15 +1232,15 @@ function StudentReport({ studentId, onBack }) {
                         {lateDays > 0 && <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(255,180,84,0.4)", marginRight:4 }}/>Late</span>}
                       </div>
                     </div>
-                    {/* Absent dates */}
+                    {/* Absent dates + consecutive runs + month table */}
                     <div>
                       <div style={{ fontSize:12, fontWeight:600, marginBottom:8, color:"var(--bad)" }}>
                         Absent dates ({absentDates.length})
                       </div>
                       {absentDates.length === 0 ? (
-                        <div style={{ fontSize:13, color:"var(--good)" }}>🎉 No absences!</div>
+                        <div style={{ fontSize:13, color:"var(--good)", marginBottom:10 }}>🎉 No absences!</div>
                       ) : (
-                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
                           {absentDates.map((d, i) => (
                             <span key={i} style={{ fontSize:11, background:"rgba(255,92,124,0.12)", color:"var(--bad)", border:"1px solid rgba(255,92,124,0.3)", borderRadius:6, padding:"3px 8px" }}>
                               {d}
@@ -1129,9 +1248,44 @@ function StudentReport({ studentId, onBack }) {
                           ))}
                         </div>
                       )}
-                      {attPct < 75 && (
-                        <div style={{ marginTop:10, fontSize:12, background:"rgba(255,92,124,0.08)", border:"1px solid rgba(255,92,124,0.25)", borderRadius:8, padding:"8px 12px", color:"var(--bad)" }}>
-                          ⚠ Attendance below 75% — follow-up required
+
+                      {/* Consecutive absence alert */}
+                      {consecutiveRuns.map((run, i) => (
+                        <div key={i} style={{ marginBottom:6, fontSize:12, background:"rgba(255,92,124,0.08)", border:"1px solid rgba(255,92,124,0.25)", borderRadius:8, padding:"7px 12px", color:"var(--bad)" }}>
+                          ⚠ {run.length} consecutive absences: {new Date(run[0]).toLocaleDateString("en-IN",{day:"numeric",month:"short"})} – {new Date(run[run.length-1]).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}
+                        </div>
+                      ))}
+
+                      {/* Month-wise breakdown */}
+                      {months.length > 1 && (
+                        <div style={{ marginTop:8 }}>
+                          <div style={{ fontSize:11, fontWeight:600, color:"var(--muted)", marginBottom:6, letterSpacing:0.5 }}>MONTH-WISE BREAKDOWN</div>
+                          <table style={{ fontSize:12, width:"100%" }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign:"left" }}>Month</th>
+                                <th style={{ textAlign:"center" }}>Days</th>
+                                <th style={{ textAlign:"center" }}>Present</th>
+                                <th style={{ textAlign:"center" }}>Absent</th>
+                                {months.some((m) => m.late > 0) && <th style={{ textAlign:"center" }}>Late</th>}
+                                <th style={{ textAlign:"center" }}>%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {months.map((m) => (
+                                <tr key={m.key}>
+                                  <td><b>{m.label}</b></td>
+                                  <td style={{ textAlign:"center" }}>{m.total}</td>
+                                  <td style={{ textAlign:"center", color:"var(--good)" }}>{m.present||0}</td>
+                                  <td style={{ textAlign:"center", color: m.absent > 0 ? "var(--bad)" : "var(--muted)" }}>{m.absent||0}</td>
+                                  {months.some((x) => x.late > 0) && <td style={{ textAlign:"center", color:"var(--warn)" }}>{m.late||0}</td>}
+                                  <td style={{ textAlign:"center" }}>
+                                    <span style={{ fontWeight:700, color: m.pct >= 85 ? "var(--good)" : m.pct >= 75 ? "var(--warn)" : "var(--bad)" }}>{m.pct}%</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       )}
                     </div>
@@ -1228,7 +1382,8 @@ function StudentReport({ studentId, onBack }) {
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
 function Reports() {
-  const list = useApi(() => api.listStudents(MY_CLASS), []);
+  const { MY_CLASS } = useMyClass();
+  const list = useApi(() => api.listStudents(MY_CLASS), [MY_CLASS]);
   const [selectedId, setSelectedId] = useState(null);
 
   if (selectedId) {

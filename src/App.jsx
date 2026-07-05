@@ -4,9 +4,11 @@ import { NAV } from "./roles/registry.js";
 import Layout from "./components/Layout.jsx";
 import Login from "./components/Login.jsx";
 import { getCurrentUser, signOut as cognitoSignOut } from "./lib/auth.js";
+import { getMe } from "./services/dataService.js";
 
 export default function App() {
   const [auth, setAuth] = useState({ status: "loading", user: null });
+  const [meData, setMeData] = useState(null);
   const [view, setView] = useState("dashboard");
   const [, setVersion] = useState(0);           // bump() re-renders after data mutations
   const bump = () => setVersion((v) => v + 1);
@@ -18,8 +20,20 @@ export default function App() {
     );
   }, []);
 
+  // After sign-in, fetch the user's DB identity (/me)
+  useEffect(() => {
+    if (auth.status !== "in") return;
+    getMe()
+      .then((data) => setMeData(data))
+      .catch(() => setMeData(null)); // graceful degradation — fallback to demo IDs
+  }, [auth.status]);
+
   const onSignedIn = (user) => { setView("dashboard"); setAuth({ status: "in", user }); };
-  const signOut = () => { cognitoSignOut(); setAuth({ status: "out", user: null }); };
+  const signOut = () => {
+    cognitoSignOut();
+    setAuth({ status: "out", user: null });
+    setMeData(null);
+  };
 
   if (auth.status === "loading") return <div className="center-msg">Loading…</div>;
   if (auth.status === "out") return <Login onSignedIn={onSignedIn} />;
@@ -39,7 +53,7 @@ export default function App() {
   const safeView = NAV[role].find((n) => n.key === view) ? view : NAV[role][0].key;
 
   return (
-    <AppContext.Provider value={{ role, view: safeView, setView, bump, user: auth.user, signOut }}>
+    <AppContext.Provider value={{ role, view: safeView, setView, bump, user: auth.user, signOut, meData, reloadMe: () => getMe().then(setMeData).catch(() => {}) }}>
       <Layout />
     </AppContext.Provider>
   );

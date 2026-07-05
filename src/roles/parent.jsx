@@ -1,16 +1,23 @@
 // PARENT role screens — read-only view of their child's data.
-// Demo child: Aarav Anand, Student ID 1, Class 8-A, Roll 12.
 import React, { useState } from "react";
 import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
+import { useApp } from "../context.js";
 import { Card, Stat, PageHead, Tabs, FeeBadge, Message, Calendar, Loading, Donut } from "../components/ui.jsx";
 
-const SID        = api.DEMO_STUDENT_ID;
-const CHILD_NAME = "Aarav Anand";
-const CHILD_CLS  = "8-A";
-const CHILD_ROLL = "12";
-const CLASS_ID   = config.academics.classes.indexOf(CHILD_CLS) + 1;
+// Resolve child identity from /auth/me (set after login).
+// Falls back to demo values so the app still works before linking.
+function useChildContext() {
+  const { meData } = useApp();
+  return {
+    SID:        meData?.studentId  || api.DEMO_STUDENT_ID,
+    CHILD_NAME: meData?.childName  || "Aarav Anand",
+    CHILD_CLS:  meData?.className  || "8-A",
+    CHILD_ROLL: meData?.roll       || "12",
+    CLASS_ID:   meData?.classId    || (config.academics.classes.indexOf("8-A") + 1),
+  };
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function getLocalDateStr() {
@@ -52,11 +59,12 @@ function MarkBar({ subject, mark }) {
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 function Dashboard() {
+  const { SID, CHILD_NAME, CHILD_CLS, CHILD_ROLL } = useChildContext();
   const today = getLocalDateStr();
 
-  const att   = useApi(() => api.getStudentAttendance(SID), []);
+  const att   = useApi(() => api.getStudentAttendance(SID), [SID]);
   const exams = useApi(() => api.getExams(), []);
-  const fees  = useApi(() => api.getFees(SID), []);
+  const fees  = useApi(() => api.getFees(SID), [SID]);
   const msgs  = useApi(() => api.getMessages(), []);
 
   // Attendance stats
@@ -72,7 +80,7 @@ function Dashboard() {
   const latestExam = examList.length ? examList[examList.length - 1] : null;
   const marks = useApi(
     () => latestExam ? api.getMarks(latestExam.id, SID) : Promise.resolve([]),
-    [latestExam && latestExam.id]
+    [latestExam && latestExam.id, SID]
   );
   const markRows = marks.data || [];
   const examAvg  = markRows.length
@@ -213,7 +221,8 @@ function Dashboard() {
 
 // ─── Attendance ───────────────────────────────────────────────────────────────
 function Attendance() {
-  const att   = useApi(() => api.getStudentAttendance(SID), []);
+  const { SID, CHILD_NAME } = useChildContext();
+  const att   = useApi(() => api.getStudentAttendance(SID), [SID]);
   const rows  = att.data || [];
   const present = rows.filter((r) => r.status === "present").length;
   const absent  = rows.filter((r) => r.status === "absent").length;
@@ -256,10 +265,11 @@ function Attendance() {
 
 // ─── Marks ────────────────────────────────────────────────────────────────────
 function Marks() {
+  const { SID, CHILD_NAME } = useChildContext();
   const exams = useApi(() => api.getExams(), []);
   const [examId, setExamId] = useState(null);
   const current = examId || (exams.data && exams.data.length ? exams.data[exams.data.length - 1].id : null);
-  const marks   = useApi(() => (current ? api.getMarks(current, SID) : Promise.resolve([])), [current]);
+  const marks   = useApi(() => (current ? api.getMarks(current, SID) : Promise.resolve([])), [current, SID]);
 
   const rows  = marks.data || [];
   const total = rows.reduce((a, r) => a + Number(r.mark), 0);
@@ -324,7 +334,8 @@ function Marks() {
 
 // ─── Fees ─────────────────────────────────────────────────────────────────────
 function Fees() {
-  const fees = useApi(() => api.getFees(SID), []);
+  const { SID, CHILD_NAME } = useChildContext();
+  const fees = useApi(() => api.getFees(SID), [SID]);
   const f    = fees.data || { total: 0, paid: 0, terms: [] };
   const due  = f.total - f.paid;
   const pct  = f.total ? Math.round((f.paid / f.total) * 100) : 0;
@@ -424,9 +435,10 @@ function Notices() {
 
 // ─── Timetable ───────────────────────────────────────────────────────────────
 function Timetable() {
+  const { CLASS_ID, CHILD_NAME, CHILD_CLS } = useChildContext();
   const DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   const todayDay  = DAY_NAMES[new Date().getDay()];
-  const tt        = useApi(() => api.getTimetableDB(CLASS_ID), []);
+  const tt        = useApi(() => api.getTimetableDB(CLASS_ID), [CLASS_ID]);
   const schedule  = tt.data || [];
   return (
     <>

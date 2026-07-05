@@ -3,6 +3,7 @@ import React, { useState, Fragment } from "react";
 import config from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
+import { useApp } from "../context.js";
 import { Card, Stat, PageHead, Tabs, FeeBadge, Loading, Donut } from "../components/ui.jsx";
 import StudentForm from "../components/StudentForm.jsx";
 import StudentProfile from "../components/StudentProfile.jsx";
@@ -400,9 +401,194 @@ function Reports() {
   );
 }
 
+// ─── Link Users ───────────────────────────────────────────────────────────────
+// Admin assigns a Cognito login email to a student or teacher record.
+// This is how "Shankar" gets linked to Class 8-A student Aarav, etc.
+function LinkUsers() {
+  const { reloadMe } = useApp();
+  const [cls, setCls] = useState(classes[0]);
+
+  // All students in selected class
+  const list = useApi(() => api.listStudents(cls), [cls]);
+  const students = list.data || [];
+
+  // Per-student link form state
+  const [emailMap, setEmailMap]   = useState({});   // studentId -> typed email
+  const [statusMap, setStatusMap] = useState({});   // studentId -> 'ok'|'err'|'busy'
+
+  // Teacher link form
+  const [teacherCls, setTeacherCls]     = useState(classes[0]);
+  const [teacherEmail, setTeacherEmail] = useState("");
+  const [teacherStatus, setTeacherStatus] = useState("");
+
+  const setEmail = (id, val) => setEmailMap((m) => ({ ...m, [id]: val }));
+
+  const linkStudent = async (studentId) => {
+    const email = (emailMap[studentId] || "").trim();
+    if (!email) return;
+    setStatusMap((m) => ({ ...m, [studentId]: "busy" }));
+    try {
+      await api.linkUserToStudent(email, studentId);
+      setStatusMap((m) => ({ ...m, [studentId]: "ok" }));
+      setEmailMap((m) => ({ ...m, [studentId]: "" }));
+      list.reload();
+      reloadMe();
+    } catch {
+      setStatusMap((m) => ({ ...m, [studentId]: "err" }));
+    }
+  };
+
+  const unlinkStudent = async (studentId) => {
+    if (!confirm("Remove the login link for this student?")) return;
+    await api.unlinkStudent(studentId);
+    list.reload();
+  };
+
+  const linkTeacher = async () => {
+    const email = teacherEmail.trim();
+    if (!email || !teacherCls) return;
+    setTeacherStatus("busy");
+    try {
+      const classId = classes.indexOf(teacherCls) + 1;
+      await api.linkUserToTeacher(email, classId);
+      setTeacherStatus("ok");
+      setTeacherEmail("");
+    } catch {
+      setTeacherStatus("err");
+    }
+  };
+
+  const inputStyle = {
+    background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)",
+    borderRadius: 7, padding: "6px 10px", fontSize: 12, width: 220,
+  };
+
+  return (
+    <>
+      <PageHead
+        title="Link User Accounts"
+        sub="Assign a Cognito login email to each student or teacher record"
+      />
+
+      {/* ── HOW IT WORKS banner ─────────────────────────────────────────── */}
+      <div style={{
+        background: "rgba(124,92,255,0.08)", border: "1px solid rgba(124,92,255,0.25)",
+        borderRadius: 12, padding: "14px 18px", marginBottom: 18, fontSize: 13,
+      }}>
+        <b>How it works:</b> When a user signs in via Cognito, they need to be linked to a DB record so the app can show their data.
+        Enter the user's <b>Cognito email</b> next to the matching student record and click <b>Link</b>.
+        After linking, that user's login will show their own attendance, marks, and fees automatically.
+      </div>
+
+      {/* ── Teacher section ─────────────────────────────────────────────── */}
+      <Card title="🧑‍🏫 Link Teacher to Class">
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "4px 0" }}>
+          <span className="mini">Class:</span>
+          <select
+            value={teacherCls}
+            onChange={(e) => setTeacherCls(e.target.value)}
+            style={{ ...inputStyle, width: 100 }}
+          >
+            {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <span className="mini">Cognito email:</span>
+          <input
+            type="email"
+            value={teacherEmail}
+            onChange={(e) => setTeacherEmail(e.target.value)}
+            placeholder="teacher@example.com"
+            style={inputStyle}
+          />
+          <button
+            className="btn sm"
+            onClick={linkTeacher}
+            disabled={teacherStatus === "busy"}
+          >
+            {teacherStatus === "busy" ? "Linking…" : "Link Teacher"}
+          </button>
+          {teacherStatus === "ok" && <span className="badge b-good">✓ Linked</span>}
+          {teacherStatus === "err" && <span className="badge b-bad">✗ Failed</span>}
+        </div>
+        <div className="mini" style={{ marginTop: 8, color: "var(--muted)" }}>
+          This sets the class_teacher_id for the selected class. The teacher's dashboard will show that class automatically.
+        </div>
+      </Card>
+
+      {/* ── Student section ─────────────────────────────────────────────── */}
+      <Card
+        title={
+          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            👥 Link Students
+            <Tabs
+              items={classes.map((c) => ({ id: c, name: c }))}
+              value={cls}
+              onChange={(c) => { setCls(c); setEmailMap({}); setStatusMap({}); }}
+            />
+          </span>
+        }
+        style={{ marginTop: 18 }}
+      >
+        <Loading state={list}>
+          {students.length === 0 ? (
+            <div className="mini">No students in this class.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Roll</th>
+                  <th>Student Name</th>
+                  <th>Linked Account</th>
+                  <th>Cognito Email to Link</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.roll}</td>
+                    <td><b>{s.name}</b></td>
+                    <td>
+                      {s.user_email ? (
+                        <span className="badge b-good" style={{ fontSize: 11 }}>✓ {s.user_email}</span>
+                      ) : (
+                        <span className="badge" style={{ background: "var(--panel2)", fontSize: 11 }}>Not linked</span>
+                      )}
+                    </td>
+                    <td>
+                      <input
+                        type="email"
+                        value={emailMap[s.id] || ""}
+                        onChange={(e) => setEmail(s.id, e.target.value)}
+                        placeholder="user@school.com"
+                        style={inputStyle}
+                      />
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <button
+                        className="btn sm"
+                        onClick={() => linkStudent(s.id)}
+                        disabled={statusMap[s.id] === "busy" || !emailMap[s.id]}
+                      >
+                        {statusMap[s.id] === "busy" ? "…" : "Link"}
+                      </button>
+                      {statusMap[s.id] === "ok" && <span className="badge b-good" style={{ marginLeft: 6 }}>✓</span>}
+                      {statusMap[s.id] === "err" && <span className="badge b-bad" style={{ marginLeft: 6 }}>✗</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
 export const schoolAdminNav = [
-  { key: "dashboard", label: "Dashboard", icon: "🏠", Component: Dashboard },
-  { key: "fees",      label: "Fees",      icon: "💰", Component: Fees      },
-  { key: "students",  label: "Students",  icon: "👥", Component: Students  },
-  { key: "reports",   label: "Reports",   icon: "📋", Component: Reports   },
+  { key: "dashboard", label: "Dashboard",   icon: "🏠", Component: Dashboard  },
+  { key: "fees",      label: "Fees",         icon: "💰", Component: Fees       },
+  { key: "students",  label: "Students",     icon: "👥", Component: Students   },
+  { key: "reports",   label: "Reports",      icon: "📋", Component: Reports    },
+  { key: "linkusers", label: "Link Users",   icon: "🔗", Component: LinkUsers  },
 ];

@@ -6,7 +6,12 @@ import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
 import { Card, Stat, PageHead, Bar, Tabs, FeeBadge, Message, Calendar, Loading, Donut, money } from "../components/ui.jsx";
 
-const SID = api.DEMO_STUDENT_ID;
+// SID is resolved from /auth/me at runtime; falls back to demo ID if not linked yet.
+// Each component calls useSID() to get the live value.
+function useSID() {
+  const { meData } = useApp();
+  return meData?.studentId || api.DEMO_STUDENT_ID;
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function getLocalDateStr() {
@@ -35,12 +40,13 @@ const subjectColor = (name) => SUBJECT_COLORS[name] || "#9b7bff";
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 function Dashboard() {
   const { setView } = useApp();
+  const SID = useSID();
   const today    = getLocalDateStr();
   const todayDay = DAY_NAMES[new Date().getDay()];
 
-  const att    = useApi(() => api.getStudentAttendance(SID), []);
+  const att    = useApi(() => api.getStudentAttendance(SID), [SID]);
   const exams  = useApi(() => api.getExams(), []);
-  const fees   = useApi(() => api.getFees(SID), []);
+  const fees   = useApi(() => api.getFees(SID), [SID]);
   const msgs   = useApi(() => api.getMessages(), []);
   const events = useApi(() => api.getEvents(), []);
 
@@ -56,7 +62,7 @@ function Dashboard() {
   const latestExam = examList.length ? examList[examList.length - 1] : null;
   const marks = useApi(
     () => latestExam ? api.getMarks(latestExam.id, SID) : Promise.resolve([]),
-    [latestExam && latestExam.id]
+    [latestExam && latestExam.id, SID]
   );
   const markRows = marks.data || [];
   const examAvg  = markRows.length
@@ -226,7 +232,8 @@ function Dashboard() {
 
 // ─── Attendance ───────────────────────────────────────────────────────────────
 function Attendance() {
-  const att = useApi(() => api.getStudentAttendance(SID), []);
+  const SID = useSID();
+  const att = useApi(() => api.getStudentAttendance(SID), [SID]);
   const rows = att.data || [];
   const present = rows.filter((r) => r.status === "present").length;
   const absent  = rows.filter((r) => r.status === "absent").length;
@@ -261,10 +268,11 @@ function Attendance() {
 
 // ─── Results ─────────────────────────────────────────────────────────────────
 function Results() {
+  const SID = useSID();
   const exams = useApi(() => api.getExams(), []);
   const [examId, setExamId] = useState(null);
   const current = examId || (exams.data && exams.data.length ? exams.data[exams.data.length - 1].id : null);
-  const marks = useApi(() => (current ? api.getMarks(current, SID) : Promise.resolve([])), [current]);
+  const marks = useApi(() => (current ? api.getMarks(current, SID) : Promise.resolve([])), [current, SID]);
 
   const rows  = marks.data || [];
   const total = rows.reduce((a, r) => a + Number(r.mark), 0);
@@ -430,7 +438,8 @@ function Messages() {
 
 // ─── Fees ─────────────────────────────────────────────────────────────────────
 function Fees() {
-  const fees = useApi(() => api.getFees(SID), []);
+  const SID = useSID();
+  const fees = useApi(() => api.getFees(SID), [SID]);
   const f    = fees.data || { total: 0, paid: 0, terms: [] };
   const due  = f.total - f.paid;
   return (

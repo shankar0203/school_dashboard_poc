@@ -7,7 +7,20 @@ import { get, post, put, del } from "../lib/apiClient.js";
 import { demoUsers, timetable } from "../data/seed.js";
 
 // For the POC the logged-in student persona maps to seeded student id 1 (Aarav).
+// This is only used as a fallback if /me is not yet linked.
 export const DEMO_STUDENT_ID = 1;
+
+// --- me (who am I?) -------------------------------------------------------
+// Returns { role, linked, studentId?, classId?, className?, ... }
+export const getMe = () => get("/me");
+
+// --- admin: link a cognito user to a student / teacher -------------------
+export const linkUserToStudent = (cognitoEmail, studentId) =>
+  post("/me/link", { cognitoEmail, studentId });
+export const linkUserToTeacher = (cognitoEmail, classId) =>
+  post("/me/link-teacher", { cognitoEmail, classId });
+export const unlinkStudent = (studentId) =>
+  post("/me/unlink", { studentId });
 
 // --- static (UI only) ----------------------------------------------------
 export const getDemoUser = (role) => demoUsers[role];

@@ -24,6 +24,7 @@ router.get("/", h(async (req, res) => {
     `SELECT s.id, s.roll_no AS roll, s.name, c.name AS cls,
             s.gender, s.guardian_name AS guardian, s.guardian_phone AS phone,
             s.notes AS remarks,
+            u.email AS user_email,
             ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS att,
             CASE
               WHEN COALESCE(f.due,0) = 0 THEN 'Paid'
@@ -33,6 +34,7 @@ router.get("/", h(async (req, res) => {
             END AS fee
      FROM students s
      JOIN classes c ON c.id = s.class_id
+     LEFT JOIN users u ON u.id = s.user_id
      LEFT JOIN attendance a ON a.student_id = s.id
      LEFT JOIN (SELECT student_id, SUM(amount_due) due, SUM(amount_paid) paid
                 FROM fees GROUP BY student_id) f ON f.student_id = s.id
