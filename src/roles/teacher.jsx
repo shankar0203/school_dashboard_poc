@@ -1,6 +1,6 @@
 // TEACHER role screens — live data from the API.
 import React, { useState, Fragment } from "react";
-import config from "../config/appConfig.js";
+import config, { ATT_MAP, ATT_STATUSES, attEffPct } from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
@@ -94,9 +94,10 @@ function Dashboard() {
   // ── today's attendance
   const todayRows      = todayAtt.data || [];
   const attMarkedToday = todayRows.length > 0 && todayRows.some((r) => r.status);
-  const presentToday   = todayRows.filter((r) => r.status === "present").length;
-  const absentToday    = todayRows.filter((r) => r.status === "absent").length;
-  const todayPct       = todayRows.length ? Math.round((presentToday / todayRows.length) * 100) : 0;
+  // "In school" = present + late + od + half_day; "Out" = absent + medical
+  const presentToday   = todayRows.filter((r) => ["present","late","od","half_day"].includes(r.status)).length;
+  const absentToday    = todayRows.filter((r) => ["absent","medical"].includes(r.status)).length;
+  const todayPct       = attEffPct(todayRows);
 
   // ── monthly attendance from student records
   const strength = students.length;
@@ -171,7 +172,7 @@ function Dashboard() {
             <div style={{ textAlign: "right" }}>
               <span className="badge b-good" style={{ fontSize: 12 }}>✓ Attendance marked</span>
               <div className="mini" style={{ marginTop: 4 }}>
-                {presentToday} present · {absentToday} absent · {todayPct}%
+                {presentToday} in · {absentToday} out · {todayPct}% effective
               </div>
             </div>
           ) : (
@@ -397,9 +398,16 @@ function AttendanceEntry() {
   const day  = useApi(() => api.getAttendanceByDate(activeClassId, date), [activeClassId, date]);
   const rows = day.data || [];
   const [marks, setMarks] = useState({});
+  const STATUS_CYCLE = ATT_STATUSES.map((s) => s.value);
   const statusOf = (r) => marks[r.studentId] || r.status || "present";
-  const toggle = (r) => setMarks({ ...marks, [r.studentId]: statusOf(r) === "present" ? "absent" : "present" });
-  const present = rows.filter((r) => statusOf(r) === "present").length;
+  const cycle = (r) => {
+    const cur = statusOf(r);
+    const idx = STATUS_CYCLE.indexOf(cur);
+    setMarks({ ...marks, [r.studentId]: STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length] });
+  };
+  // Count summary
+  const inCount  = rows.filter((r) => ["present","late","od","half_day"].includes(statusOf(r))).length;
+  const outCount = rows.filter((r) => ["absent","medical"].includes(statusOf(r))).length;
 
   const handleClassChange = (e) => {
     const id = Number(e.target.value);
@@ -418,8 +426,8 @@ function AttendanceEntry() {
 
   return (
     <>
-      <PageHead title={`Attendance — ${activeClassName || "…"}`} sub="Pick a class & date, tap to toggle, Save (stored for the year)"
-        right={<span className="pill">{present} present · {rows.length - present} absent</span>} />
+      <PageHead title={`Attendance — ${activeClassName || "…"}`} sub="Tap a cell to cycle: P → A → L → HD → OD → ML → P. Save when done."
+        right={<span className="pill">{inCount} in · {outCount} out</span>} />
       <Card title={
         <>
           <span style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -436,17 +444,37 @@ function AttendanceEntry() {
       }>
         <Loading state={day}>
           {rows.length === 0 ? <div className="mini">No students in this class.</div> : (
-            <div className="grid g4" style={{ gap: 9 }}>
-              {rows.map((r) => {
-                const p = statusOf(r) === "present";
-                return (
-                  <div className="att-cell" key={r.studentId} onClick={() => toggle(r)}>
-                    <div><div className="nm">{r.name}</div><div className="rn">Roll {r.roll}</div></div>
-                    <div className={`pres ${p ? "p-yes" : "p-no"}`}>{p ? "P" : "A"}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <div className="grid g4" style={{ gap: 9 }}>
+                {rows.map((r) => {
+                  const st   = statusOf(r);
+                  const info = ATT_MAP[st] || ATT_MAP["present"];
+                  return (
+                    <div className="att-cell" key={r.studentId} onClick={() => cycle(r)}
+                      title={`Click to cycle — current: ${info.label}`}>
+                      <div><div className="nm">{r.name}</div><div className="rn">Roll {r.roll}</div></div>
+                      <div className="pres" style={{
+                        background: info.bg, color: info.color,
+                        border: `1px solid ${info.color}55`,
+                        fontSize: st === "half_day" || st === "od" || st === "medical" ? 10 : 13,
+                        fontWeight: 700,
+                      }}>
+                        {info.short}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Legend */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12, fontSize: 11 }}>
+                {ATT_STATUSES.map((s) => (
+                  <span key={s.value} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ display: "inline-block", width: 18, height: 18, borderRadius: 4, background: s.bg, border: `1px solid ${s.color}55`, color: s.color, fontWeight: 700, fontSize: 9, textAlign: "center", lineHeight: "18px" }}>{s.short}</span>
+                    {s.label}
+                  </span>
+                ))}
+              </div>
+            </>
           )}
           <div className="mini" style={{ marginTop: 10 }}>Saved per date in the database — viewable any day, kept for the academic year.</div>
         </Loading>
@@ -871,14 +899,17 @@ function StudentReport({ studentId, onBack }) {
   const allMarks   = useApi(() => api.getStudentMarksAll(studentId), [studentId]);
   const feesDetail = useApi(() => api.getFees(studentId),           [studentId]);
 
-  const s           = student.data;
-  const attRows     = attendance.data || [];
-  const totalDays   = attRows.length;
-  const presentDays = attRows.filter((r) => r.status === "present").length;
-  const absentDays  = totalDays - presentDays;
-  const lateDays    = attRows.filter((r) => r.status === "late").length;
-  const attPct      = totalDays ? Math.round((presentDays / totalDays) * 100) : 0;
-  const absentDates = attRows.filter((r) => r.status === "absent").map((r) => {
+  const s            = student.data;
+  const attRows      = attendance.data || [];
+  const totalDays    = attRows.length;
+  const presentDays  = attRows.filter((r) => r.status === "present").length;
+  const lateDays     = attRows.filter((r) => r.status === "late").length;
+  const halfDayDays  = attRows.filter((r) => r.status === "half_day").length;
+  const odDays       = attRows.filter((r) => r.status === "od").length;
+  const medicalDays  = attRows.filter((r) => r.status === "medical").length;
+  const absentDays   = attRows.filter((r) => r.status === "absent").length;
+  const attPct       = attEffPct(attRows);
+  const absentDates  = attRows.filter((r) => r.status === "absent").map((r) => {
     const d = new Date(r.date);
     return d.toLocaleDateString("en-IN", { day:"numeric", month:"short" });
   });
@@ -940,12 +971,13 @@ function StudentReport({ studentId, onBack }) {
   const monthMap = {};
   attRows.forEach((r) => {
     const m = r.date.slice(0, 7);
-    if (!monthMap[m]) monthMap[m] = { present:0, absent:0, late:0 };
+    if (!monthMap[m]) monthMap[m] = {};
     monthMap[m][r.status] = (monthMap[m][r.status] || 0) + 1;
   });
   const months = Object.entries(monthMap).map(([key, v]) => {
-    const total = (v.present||0) + (v.absent||0) + (v.late||0);
-    const pct   = total ? Math.round(((v.present||0) / total) * 100) : 0;
+    const monthRows = attRows.filter((r) => r.date.startsWith(key));
+    const total = monthRows.length;
+    const pct   = attEffPct(monthRows);
     const d     = new Date(key + "-01");
     return { key, label: d.toLocaleDateString("en-IN", { month:"short", year:"numeric" }), ...v, total, pct };
   }).sort((a, b) => a.key.localeCompare(b.key));
@@ -1255,35 +1287,40 @@ function StudentReport({ studentId, onBack }) {
                   <div className="grid g2" style={{ gap:16 }}>
                     <div>
                       {/* Summary stats */}
-                      <div style={{ display:"flex", gap:14, fontSize:12, marginBottom:10 }}>
-                        <span style={{ color:"var(--good)" }}>✓ Present: <b>{presentDays}</b></span>
-                        <span style={{ color:"var(--bad)" }}>✗ Absent: <b>{absentDays}</b></span>
-                        {lateDays > 0 && <span style={{ color:"var(--warn)" }}>⏱ Late: <b>{lateDays}</b></span>}
+                      <div style={{ display:"flex", gap:10, fontSize:12, marginBottom:10, flexWrap:"wrap" }}>
+                        <span style={{ color:"#4ade80" }}>✓ Present: <b>{presentDays}</b></span>
+                        <span style={{ color:"#ff5c7c" }}>✗ Absent: <b>{absentDays}</b></span>
+                        {lateDays    > 0 && <span style={{ color:"#ffb454" }}>⏱ Late: <b>{lateDays}</b></span>}
+                        {halfDayDays > 0 && <span style={{ color:"#ffd700" }}>½ Half Day: <b>{halfDayDays}</b></span>}
+                        {odDays      > 0 && <span style={{ color:"#5aa9ff" }}>🔵 On Duty: <b>{odDays}</b></span>}
+                        {medicalDays > 0 && <span style={{ color:"#c084fc" }}>🩺 Medical: <b>{medicalDays}</b></span>}
                         <span style={{ color:"var(--muted)" }}>Total: <b>{totalDays}</b></span>
                       </div>
                       {/* Calendar dots */}
                       <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                         {attRows.map((r) => {
-                          const day = new Date(r.date).getDate();
-                          const p   = r.status === "present";
-                          const l   = r.status === "late";
+                          const day  = new Date(r.date).getDate();
+                          const info = ATT_MAP[r.status] || ATT_MAP["absent"];
                           return (
-                            <div key={r.date} title={`${r.date} — ${r.status}`} style={{
+                            <div key={r.date} title={`${r.date} — ${info.label}`} style={{
                               width:30, height:30, borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center",
                               fontSize:10, fontWeight:600,
-                              background: p ? "rgba(74,222,128,0.15)" : l ? "rgba(255,180,84,0.15)" : "rgba(255,92,124,0.15)",
-                              color: p ? "var(--good)" : l ? "var(--warn)" : "var(--bad)",
-                              border: `1px solid ${p ? "rgba(74,222,128,0.3)" : l ? "rgba(255,180,84,0.3)" : "rgba(255,92,124,0.3)"}`,
+                              background: info.bg,
+                              color: info.color,
+                              border: `1px solid ${info.color}44`,
                             }}>
                               {day}
                             </div>
                           );
                         })}
                       </div>
-                      <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11 }}>
-                        <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(74,222,128,0.4)", marginRight:4 }}/>Present</span>
-                        <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(255,92,124,0.4)", marginRight:4 }}/>Absent</span>
-                        {lateDays > 0 && <span><span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:"rgba(255,180,84,0.4)", marginRight:4 }}/>Late</span>}
+                      <div style={{ display:"flex", gap:10, marginTop:8, fontSize:11, flexWrap:"wrap" }}>
+                        {ATT_STATUSES.filter((s) => attRows.some((r) => r.status === s.value)).map((s) => (
+                          <span key={s.value}>
+                            <span style={{ display:"inline-block", width:10, height:10, borderRadius:2, background:s.bg, marginRight:4 }}/>
+                            {s.label}
+                          </span>
+                        ))}
                       </div>
                     </div>
                     {/* Absent dates + consecutive runs + month table */}
@@ -1319,10 +1356,10 @@ function StudentReport({ studentId, onBack }) {
                               <tr>
                                 <th style={{ textAlign:"left" }}>Month</th>
                                 <th style={{ textAlign:"center" }}>Days</th>
-                                <th style={{ textAlign:"center" }}>Present</th>
-                                <th style={{ textAlign:"center" }}>Absent</th>
-                                {months.some((m) => m.late > 0) && <th style={{ textAlign:"center" }}>Late</th>}
-                                <th style={{ textAlign:"center" }}>%</th>
+                                {ATT_STATUSES.filter((s) => months.some((m) => (m[s.value]||0) > 0)).map((s) => (
+                                  <th key={s.value} style={{ textAlign:"center", color:s.color }}>{s.short}</th>
+                                ))}
+                                <th style={{ textAlign:"center" }}>Eff %</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1330,9 +1367,11 @@ function StudentReport({ studentId, onBack }) {
                                 <tr key={m.key}>
                                   <td><b>{m.label}</b></td>
                                   <td style={{ textAlign:"center" }}>{m.total}</td>
-                                  <td style={{ textAlign:"center", color:"var(--good)" }}>{m.present||0}</td>
-                                  <td style={{ textAlign:"center", color: m.absent > 0 ? "var(--bad)" : "var(--muted)" }}>{m.absent||0}</td>
-                                  {months.some((x) => x.late > 0) && <td style={{ textAlign:"center", color:"var(--warn)" }}>{m.late||0}</td>}
+                                  {ATT_STATUSES.filter((s) => months.some((x) => (x[s.value]||0) > 0)).map((s) => (
+                                    <td key={s.value} style={{ textAlign:"center", color: (m[s.value]||0) > 0 ? s.color : "var(--muteder)" }}>
+                                      {m[s.value]||0}
+                                    </td>
+                                  ))}
                                   <td style={{ textAlign:"center" }}>
                                     <span style={{ fontWeight:700, color: m.pct >= 85 ? "var(--good)" : m.pct >= 75 ? "var(--warn)" : "var(--bad)" }}>{m.pct}%</span>
                                   </td>

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -f \"node -e\")",
+      "Bash(lsof -ti:4000)",
+      "Bash(xargs kill)",
+      "Bash(AUTH_DISABLED=true node -e \"['me','students','timetable','attendance','exams','marks','results','messages','fees','meta'].forEach\\(r=>require\\('./routes/'+r\\)\\); require\\('./auth'\\); console.log\\('OK: all 10 routes + auth load clean'\\)\")"
+    ]
+  }
+}

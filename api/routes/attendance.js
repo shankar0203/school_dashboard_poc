@@ -19,7 +19,12 @@ router.get("/classwise", h(async (req, res) => {
   }
 
   const [rows] = await db.query(
-    `SELECT c.name AS cls, ROUND(AVG(a.status = 'present') * 100) AS pct
+    `SELECT c.name AS cls,
+            ROUND(SUM(CASE
+              WHEN a.status IN ('present','late','od') THEN 1.0
+              WHEN a.status = 'half_day' THEN 0.5
+              ELSE 0
+            END) / NULLIF(COUNT(*), 0) * 100) AS pct
      FROM attendance a JOIN classes c ON c.id = a.class_id
      WHERE a.school_id = ?${classFilter}
      GROUP BY c.id ORDER BY c.name`,
@@ -101,7 +106,7 @@ router.post("/", requireRole(...CAN.MARK_ATTENDANCE), h(async (req, res) => {
     if (uid) await assertTeacherClass(db, uid, classId, req.schoolId);
   }
 
-  const valid = records.filter((r) => ["present", "absent", "late"].includes(r.status));
+  const valid = records.filter((r) => ["present", "absent", "late", "half_day", "od", "medical"].includes(r.status));
   if (!valid.length) return res.json({ saved: 0 });
 
   const rows = valid.map((r) => [req.schoolId, r.studentId, classId, date, r.status]);

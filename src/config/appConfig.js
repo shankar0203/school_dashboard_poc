@@ -134,4 +134,24 @@ export const config = {
 export const money = (n) =>
   config.app.currency + Number(n).toLocaleString(config.app.locale);
 
+// ── Attendance status definitions ─────────────────────────────────────────────
+// Single source of truth — import { ATT_STATUSES, ATT_MAP, attEffPct } where needed.
+export const ATT_STATUSES = [
+  { value: "present",  label: "Present",  short: "P",  color: "#4ade80", bg: "rgba(74,222,128,0.15)",  w: 1.0 },
+  { value: "absent",   label: "Absent",   short: "A",  color: "#ff5c7c", bg: "rgba(255,92,124,0.15)",  w: 0   },
+  { value: "late",     label: "Late",     short: "L",  color: "#ffb454", bg: "rgba(255,180,84,0.15)",  w: 1.0 },
+  { value: "half_day", label: "Half Day", short: "HD", color: "#ffd700", bg: "rgba(255,215,0,0.15)",   w: 0.5 },
+  { value: "od",       label: "On Duty",  short: "OD", color: "#5aa9ff", bg: "rgba(90,169,255,0.15)",  w: 1.0 },
+  { value: "medical",  label: "Medical",  short: "ML", color: "#c084fc", bg: "rgba(192,132,252,0.15)", w: 0   },
+];
+
+export const ATT_MAP = Object.fromEntries(ATT_STATUSES.map((s) => [s.value, s]));
+
+// Weighted attendance % — present/late/od = 1.0, half_day = 0.5, absent/medical = 0
+export const attEffPct = (rows) => {
+  if (!rows || !rows.length) return 0;
+  const eff = rows.reduce((sum, r) => sum + (ATT_MAP[r.status]?.w ?? 0), 0);
+  return Math.round((eff / rows.length) * 100);
+};
+
 export default config;

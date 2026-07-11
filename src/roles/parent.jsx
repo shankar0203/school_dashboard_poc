@@ -1,6 +1,6 @@
 // PARENT role screens — read-only view of their child's data.
 import React, { useState } from "react";
-import config from "../config/appConfig.js";
+import config, { ATT_MAP, ATT_STATUSES, attEffPct } from "../config/appConfig.js";
 import * as api from "../services/dataService.js";
 import { useApi } from "../hooks/useApi.js";
 import { useApp } from "../context.js";
@@ -68,12 +68,12 @@ function Dashboard() {
   const msgs  = useApi(() => api.getMessages(), []);
 
   // Attendance stats
-  const attRows  = att.data || [];
-  const present  = attRows.filter((r) => r.status === "present").length;
-  const absent   = attRows.filter((r) => r.status === "absent").length;
-  const attPct   = attRows.length ? Math.round((present / attRows.length) * 100) : 0;
-  const todayRecord   = attRows.find((r) => r.date === today);
-  const todayStatus   = todayRecord ? todayRecord.status : "not recorded";
+  const attRows     = att.data || [];
+  const present     = attRows.filter((r) => r.status === "present").length;
+  const absent      = attRows.filter((r) => r.status === "absent").length;
+  const attPct      = attEffPct(attRows);
+  const todayRecord = attRows.find((r) => r.date === today);
+  const todayStatus = todayRecord ? todayRecord.status : "not recorded";
 
   // Latest exam marks
   const examList   = exams.data || [];
@@ -96,11 +96,10 @@ function Dashboard() {
   const notices  = ((msgs.data && msgs.data.studentFeed) || []).slice(0, 3);
   const notes    = ((msgs.data && msgs.data.studentFeed) || []).filter((m) => m.role === "teacher").slice(0, 2);
 
-  // Attendance donut
-  const attBands = [
-    { label: "Present", value: present, color: "#4ade80" },
-    { label: "Absent",  value: absent,  color: "#ff5c7c" },
-  ];
+  // Attendance donut — aggregate by status
+  const attBands = ATT_STATUSES
+    .map((s) => ({ label: s.label, value: attRows.filter((r) => r.status === s.value).length, color: s.color }))
+    .filter((b) => b.value > 0);
 
   return (
     <>
@@ -120,8 +119,14 @@ function Dashboard() {
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          {todayStatus === "present" && <span className="badge b-good">✓ Present today</span>}
-          {todayStatus === "absent"  && <span className="badge b-bad">✗ Absent today</span>}
+          {todayStatus !== "not recorded" && (() => {
+            const info = ATT_MAP[todayStatus];
+            return info ? (
+              <span className="badge" style={{ background: info.bg, color: info.color, border: `1px solid ${info.color}44` }}>
+                {todayStatus === "present" ? "✓" : todayStatus === "absent" ? "✗" : "·"} {info.label} today
+              </span>
+            ) : null;
+          })()}
           {todayStatus === "not recorded" && <span className="badge" style={{ background: "rgba(107,113,168,0.2)", color: "var(--muted)" }}>Attendance not recorded yet</span>}
           {!feeOk && (
             <div className="mini" style={{ marginTop: 4, color: "var(--bad)" }}>
@@ -141,9 +146,9 @@ function Dashboard() {
         />
         <Stat
           label="Today"
-          value={todayStatus === "present" ? "✓ Present" : todayStatus === "absent" ? "✗ Absent" : "—"}
-          delta={todayStatus === "not recorded" ? "not recorded" : ""}
-          dir={todayStatus === "present" ? "up" : todayStatus === "absent" ? "down" : "flat"}
+          value={todayStatus !== "not recorded" ? (ATT_MAP[todayStatus]?.short || "—") : "—"}
+          delta={todayStatus !== "not recorded" ? (ATT_MAP[todayStatus]?.label || todayStatus) : "not recorded"}
+          dir={todayStatus === "present" || todayStatus === "late" || todayStatus === "od" ? "up" : todayStatus === "absent" || todayStatus === "medical" ? "down" : "flat"}
         />
         <Stat
           label="Latest Exam"
@@ -224,41 +229,88 @@ function Attendance() {
   const { SID, CHILD_NAME } = useChildContext();
   const att   = useApi(() => api.getStudentAttendance(SID), [SID]);
   const rows  = att.data || [];
-  const present = rows.filter((r) => r.status === "present").length;
-  const absent  = rows.filter((r) => r.status === "absent").length;
-  const late    = rows.filter((r) => r.status === "late").length;
-  const pct     = rows.length ? Math.round((present / rows.length) * 100) : 0;
-  const absentDaysJune = rows
-    .filter((r) => r.status === "absent" && r.date && r.date.startsWith("2026-06"))
-    .map((r) => Number(r.date.slice(8, 10)));
+  const pct   = attEffPct(rows);
+
+  // Count each status
+  const counts = {};
+  ATT_STATUSES.forEach((s) => { counts[s.value] = rows.filter((r) => r.status === s.value).length; });
+
+  // Group by month
+  const byMonth = {};
+  rows.forEach((r) => {
+    const mo = r.date.slice(0, 7);
+    if (!byMonth[mo]) byMonth[mo] = [];
+    byMonth[mo].push(r);
+  });
+  const monthKeys = Object.keys(byMonth).sort();
 
   return (
     <>
       <PageHead
         title={`${CHILD_NAME}'s Attendance`}
-        sub="Calendar view — June 2026"
+        sub="Day-by-day record — all months this term"
         right={
           <span className={`pill ${pct < 75 ? "b-bad" : ""}`}>
-            Term: {pct}% {pct < 75 ? "⚠ Below 75%" : ""}
+            Term: {pct}% eff. {pct < 75 ? "⚠ Below 75%" : ""}
           </span>
         }
       />
       <div className="grid g4" style={{ marginBottom: 16 }}>
-        <Stat label="Present" value={present} delta="days" dir="up" />
-        <Stat label="Absent"  value={absent}  delta="days" dir="down" />
-        <Stat label="Late"    value={late}    delta="days" />
-        <Stat label="Term %"  value={pct + "%"} delta="overall" dir={pct >= 75 ? "up" : "down"} />
+        {ATT_STATUSES.map((s) => counts[s.value] > 0 && (
+          <Stat key={s.value} label={s.label} value={counts[s.value]}
+            delta="days"
+            dir={s.value === "present" || s.value === "late" || s.value === "od" ? "up" : s.value === "absent" ? "down" : "flat"} />
+        ))}
+        <Stat label="Eff. %" value={pct + "%"} delta="overall" dir={pct >= 75 ? "up" : "down"} />
       </div>
-      <Card title="June 2026">
-        <Loading state={att}>
-          <Calendar absent={absentDaysJune} />
-          <div className="legend">
-            <span><span className="sq" style={{ background: "rgba(74,222,128,.4)" }} /> Present</span>
-            <span><span className="sq" style={{ background: "rgba(255,92,124,.4)" }} /> Absent</span>
-            <span><span className="sq" style={{ background: "var(--panel)" }} /> Holiday / weekend</span>
-          </div>
-        </Loading>
-      </Card>
+
+      {monthKeys.map((mo) => {
+        const mRows = byMonth[mo];
+        const mLabel = new Date(mo + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+        const mPct = attEffPct(mRows);
+        return (
+          <Card key={mo} title={
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {mLabel}
+              <span style={{ fontSize: 12, fontWeight: 700, color: mPct >= 85 ? "var(--good)" : mPct >= 75 ? "var(--warn)" : "var(--bad)" }}>
+                {mPct}%
+              </span>
+            </span>
+          } style={{ marginBottom: 12 }}>
+            <Loading state={att}>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {mRows.map((r) => {
+                  const info = ATT_MAP[r.status] || ATT_MAP["absent"];
+                  const day  = new Date(r.date).getDate();
+                  return (
+                    <div key={r.date} title={`${r.date} — ${info.label}`} style={{
+                      width: 34, height: 34, borderRadius: 7, display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center",
+                      background: info.bg, color: info.color,
+                      border: `1px solid ${info.color}44`,
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1 }}>{day}</div>
+                      <div style={{ fontSize: 8, fontWeight: 600, lineHeight: 1.2 }}>{info.short}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10, fontSize: 11 }}>
+                {ATT_STATUSES.filter((s) => mRows.some((r) => r.status === s.value)).map((s) => (
+                  <span key={s.value} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: s.bg, border: `1px solid ${s.color}44` }} />
+                    {s.label}
+                  </span>
+                ))}
+              </div>
+            </Loading>
+          </Card>
+        );
+      })}
+
+      {rows.length === 0 && (
+        <Card><div className="mini">No attendance records yet.</div></Card>
+      )}
     </>
   );
 }

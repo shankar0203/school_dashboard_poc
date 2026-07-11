@@ -73,7 +73,11 @@ router.get("/", h(async (req, res) => {
             s.gender, s.guardian_name AS guardian, s.guardian_phone AS phone,
             s.notes AS remarks,
             u.email AS user_email,
-            ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS att,
+            ROUND(COALESCE(SUM(CASE
+              WHEN a.status IN ('present','late','od') THEN 1.0
+              WHEN a.status = 'half_day' THEN 0.5
+              ELSE 0
+            END) / NULLIF(COUNT(a.id), 0) * 100, 100)) AS att,
             CASE
               WHEN COALESCE(f.due,0) = 0 THEN 'Paid'
               WHEN f.paid >= f.due      THEN 'Paid'
@@ -125,7 +129,11 @@ router.get("/:id", h(async (req, res) => {
 
   const [[s]] = await db.query(
     `SELECT s.*, c.name AS class_name,
-            ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS attendance_pct
+            ROUND(COALESCE(SUM(CASE
+              WHEN a.status IN ('present','late','od') THEN 1.0
+              WHEN a.status = 'half_day' THEN 0.5
+              ELSE 0
+            END) / NULLIF(COUNT(a.id), 0) * 100, 100)) AS attendance_pct
      FROM students s
      JOIN classes c ON c.id = s.class_id
      LEFT JOIN attendance a ON a.student_id = s.id

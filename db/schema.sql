@@ -185,7 +185,7 @@ CREATE TABLE attendance (
   student_id INT NOT NULL,
   class_id   INT NOT NULL,
   att_date   DATE NOT NULL,
-  status     ENUM('present','absent','late') NOT NULL,
+  status     ENUM('present','absent','late','half_day','od','medical') NOT NULL,
   marked_by  INT,
   CONSTRAINT fk_att_school  FOREIGN KEY (school_id)  REFERENCES schools(id),
   CONSTRAINT fk_att_student FOREIGN KEY (student_id) REFERENCES students(id),
