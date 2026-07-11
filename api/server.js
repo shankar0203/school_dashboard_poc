@@ -63,7 +63,8 @@ app.use("/marks", require("./routes/marks"));
 app.use("/results", require("./routes/results"));
 app.use("/messages", require("./routes/messages"));
 app.use("/fees", require("./routes/fees"));
-app.use("/meta", require("./routes/meta"));
+app.use("/meta",  require("./routes/meta"));
+app.use("/users", require("./routes/users"));
 
 // 404 for anything unmatched.
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));

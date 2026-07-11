@@ -50,7 +50,7 @@ router.get("/", h(async (req, res) => {
     return res.json({ role, schoolId, linked: false, cognitoEmail: email });
   }
 
-  const base = { role, schoolId, linked: true, userId: u.id, name: u.name, email: u.email || email };
+  const base = { role, schoolId, linked: true, userId: u.id, name: u.name, email: u.email || email, phone: u.phone || null };
 
   // ── Teacher ─────────────────────────────────────────────────────────────
   if (role === "teacher") {

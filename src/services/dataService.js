@@ -11,8 +11,12 @@ import { demoUsers, timetable } from "../data/seed.js";
 export const DEMO_STUDENT_ID = 1;
 
 // --- me (who am I?) -------------------------------------------------------
-// Returns { role, linked, studentId?, classId?, className?, ... }
+// Returns { role, linked, studentId?, classId?, className?, phone?, ... }
 export const getMe = () => get("/me");
+
+// --- users (staff management) --------------------------------------------
+export const getTeachers  = ()         => get("/users?role=teacher");
+export const updateUser   = (id, data) => put(`/users/${id}`, data);
 
 // --- admin: link a cognito user to a student / teacher -------------------
 export const linkUserToStudent = (cognitoEmail, studentId) =>

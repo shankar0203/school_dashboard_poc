@@ -325,8 +325,9 @@ function Results() {
 
 // ─── Timetable ────────────────────────────────────────────────────────────────
 function Timetable() {
-  const CLASS_ID_VAL = config.academics.classes.indexOf("8-A") + 1;
-  const tt       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), []);
+  const { meData } = useApp();
+  const CLASS_ID_VAL = meData?.classId || (config.academics.classes.indexOf("8-A") + 1);
+  const tt       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), [CLASS_ID_VAL]);
   const todayDay = DAY_NAMES[new Date().getDay()];
   const schedule = tt.data || [];
 
@@ -337,7 +338,7 @@ function Timetable() {
 
   return (
     <>
-      <PageHead title="My Timetable" sub="Class 8-A · weekly" />
+      <PageHead title="My Timetable" sub={`${meData?.className ? `Class ${meData.className}` : "My class"} · weekly`} />
       <Card>
         <Loading state={tt}>
           <div style={{ overflowX: "auto" }}>
@@ -398,6 +399,61 @@ function Events() {
           }
         </Loading>
       </Card>
+    </>
+  );
+}
+
+// ─── Profile row helper ───────────────────────────────────────────────────────
+function ProfileRow({ label, value }) {
+  if (value == null || value === "") return null;
+  return (
+    <div style={{ display: "flex", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ width: 140, color: "var(--muted)", fontSize: 12, flexShrink: 0, paddingTop: 2 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 500, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── My Profile ──────────────────────────────────────────────────────────────
+function MyProfile() {
+  const SID     = useSID();
+  const student = useApi(() => api.getStudent(SID), [SID]);
+  const s       = student.data;
+
+  return (
+    <>
+      <PageHead title="My Profile" sub="Your personal details" />
+      <Loading state={student}>
+        {s && (
+          <div className="grid g2">
+            <Card title="👤 Personal Details">
+              <ProfileRow label="Full Name"    value={s.name} />
+              <ProfileRow label="Class"        value={s.class_name} />
+              <ProfileRow label="Roll No"      value={s.roll_no} />
+              <ProfileRow label="Gender"       value={s.gender && s.gender.charAt(0).toUpperCase() + s.gender.slice(1)} />
+              <ProfileRow label="Date of Birth" value={s.dob ? new Date(s.dob).toLocaleDateString("en-IN") : null} />
+              <ProfileRow label="Blood Group"  value={s.blood_group} />
+              <ProfileRow label="Phone"        value={s.student_phone} />
+              <ProfileRow label="Email"        value={s.student_email} />
+              <ProfileRow label="Address"      value={s.address} />
+            </Card>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <Card title="👨‍👩‍👦 Guardian Details">
+                <ProfileRow label="Name"     value={s.guardian_name} />
+                <ProfileRow label="Relation" value={s.guardian_relation} />
+                <ProfileRow label="Phone"    value={s.guardian_phone} />
+                <ProfileRow label="Email"    value={s.guardian_email} />
+              </Card>
+              <Card title="🎓 Admission Info">
+                <ProfileRow label="Admission No"   value={s.admission_no} />
+                <ProfileRow label="Admission Date"
+                  value={s.admission_date ? new Date(s.admission_date).toLocaleDateString("en-IN") : null} />
+                {s.notes && <ProfileRow label="Notes" value={s.notes} />}
+              </Card>
+            </div>
+          </div>
+        )}
+      </Loading>
     </>
   );
 }
@@ -475,12 +531,13 @@ function Fees() {
 }
 
 export const studentNav = [
-  { key: "dashboard",  label: "Dashboard",   icon: "🏠", Component: Dashboard  },
-  { key: "attendance", label: "Attendance",   icon: "🗓️", Component: Attendance },
-  { key: "results",    label: "Exam Results", icon: "📊", Component: Results    },
-  { key: "timetable",  label: "Timetable",    icon: "🕐", Component: Timetable  },
-  { key: "events",     label: "Events",       icon: "📣", Component: Events     },
-  { key: "notes",      label: "Teacher Notes",icon: "📝", Component: Notes      },
-  { key: "messages",   label: "Messages",     icon: "💬", Component: Messages   },
-  { key: "fees",       label: "Fees",         icon: "💰", Component: Fees       },
+  { key: "dashboard",  label: "Dashboard",      icon: "🏠", Component: Dashboard  },
+  { key: "attendance", label: "Attendance",      icon: "🗓️", Component: Attendance },
+  { key: "results",    label: "Exam Results",    icon: "📊", Component: Results    },
+  { key: "timetable",  label: "Timetable",       icon: "🕐", Component: Timetable  },
+  { key: "events",     label: "Events",          icon: "📣", Component: Events     },
+  { key: "notes",      label: "Teacher Notes",   icon: "📝", Component: Notes      },
+  { key: "messages",   label: "Messages",        icon: "💬", Component: Messages   },
+  { key: "fees",       label: "Fees",            icon: "💰", Component: Fees       },
+  { key: "myprofile",  label: "My Profile",      icon: "👤", Component: MyProfile  },
 ];

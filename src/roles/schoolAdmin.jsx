@@ -585,10 +585,104 @@ function LinkUsers() {
   );
 }
 
+// ─── Teachers ─────────────────────────────────────────────────────────────────
+function Teachers() {
+  const list    = useApi(() => api.getTeachers(), []);
+  const teachers = list.data || [];
+
+  const [editing, setEditing] = useState(null); // user id being edited
+  const [form,    setForm]    = useState({ name: "", phone: "" });
+  const [saving,  setSaving]  = useState(false);
+
+  const startEdit = (t) => {
+    setEditing(t.id);
+    setForm({ name: t.name || "", phone: t.phone || "" });
+  };
+  const save = async () => {
+    setSaving(true);
+    try { await api.updateUser(editing, form); } catch (_) {}
+    setSaving(false);
+    setEditing(null);
+    list.reload();
+  };
+
+  return (
+    <>
+      <PageHead title="Teachers" sub={`${teachers.length} teachers · ${config.school.name}`} />
+      <Card>
+        <Loading state={list}>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Class</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th style={{ width: 90 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {teachers.map((t) => (
+                <tr key={t.id}>
+                  {editing === t.id ? (
+                    <>
+                      <td>
+                        <input
+                          value={form.name}
+                          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                          style={{ width: "100%", background: "var(--bg2)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: "4px 8px" }}
+                        />
+                      </td>
+                      <td className="mini">{t.class_name || "—"}</td>
+                      <td className="mini">{t.email}</td>
+                      <td>
+                        <input
+                          value={form.phone}
+                          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                          placeholder="Phone"
+                          style={{ width: "100%", background: "var(--bg2)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: "4px 8px" }}
+                        />
+                      </td>
+                      <td><span className={`badge ${t.status === "active" ? "b-good" : "b-bad"}`}>{t.status}</span></td>
+                      <td style={{ display: "flex", gap: 4 }}>
+                        <button className="btn" style={{ fontSize: 12, padding: "3px 10px" }} onClick={save} disabled={saving}>
+                          {saving ? "…" : "Save"}
+                        </button>
+                        <button className="btn" style={{ fontSize: 12, padding: "3px 8px", background: "var(--line)", color: "var(--muted)" }} onClick={() => setEditing(null)}>
+                          ✕
+                        </button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ fontWeight: 600 }}>{t.name}</td>
+                      <td>{t.class_name ? <span className="badge" style={{ background: "rgba(124,92,255,0.15)", color: "var(--primary)" }}>Class {t.class_name}</span> : <span className="mini">—</span>}</td>
+                      <td className="mini">{t.email}</td>
+                      <td className="mini">{t.phone || <span style={{ opacity: 0.4 }}>—</span>}</td>
+                      <td><span className={`badge ${t.status === "active" ? "b-good" : "b-bad"}`}>{t.status}</span></td>
+                      <td>
+                        <button className="btn" style={{ fontSize: 12, padding: "3px 10px" }} onClick={() => startEdit(t)}>
+                          Edit
+                        </button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Loading>
+      </Card>
+    </>
+  );
+}
+
 export const schoolAdminNav = [
   { key: "dashboard", label: "Dashboard",   icon: "🏠", Component: Dashboard  },
   { key: "fees",      label: "Fees",         icon: "💰", Component: Fees       },
   { key: "students",  label: "Students",     icon: "👥", Component: Students   },
+  { key: "teachers",  label: "Teachers",     icon: "🧑‍🏫", Component: Teachers  },
   { key: "reports",   label: "Reports",      icon: "📋", Component: Reports    },
   { key: "linkusers", label: "Link Users",   icon: "🔗", Component: LinkUsers  },
 ];

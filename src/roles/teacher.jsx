@@ -1497,6 +1497,61 @@ function Reports() {
   );
 }
 
+// ─── Profile row helper ──────────────────────────────────────────────────────
+function TProfileRow({ label, value }) {
+  if (value == null || value === "") return null;
+  return (
+    <div style={{ display: "flex", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ width: 160, color: "var(--muted)", fontSize: 12, flexShrink: 0, paddingTop: 2 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 500, wordBreak: "break-word" }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── My Profile ──────────────────────────────────────────────────────────────
+function MyProfile() {
+  const { meData } = useApp();
+
+  const uniqueSubjects = [...new Set((meData?.subjects || []).map((s) => s.name))];
+
+  return (
+    <>
+      <PageHead title="My Profile" sub="Your details on record" />
+      <div className="grid g2">
+        <Card title="👤 Personal Details">
+          <TProfileRow label="Full Name"       value={meData?.name} />
+          <TProfileRow label="Email"           value={meData?.email} />
+          <TProfileRow label="Phone"           value={meData?.phone} />
+          <TProfileRow label="Class Teacher Of" value={meData?.className ? `Class ${meData.className}` : null} />
+          <TProfileRow label="Role"            value="Class Teacher" />
+        </Card>
+        <Card title="📚 Classes & Subjects">
+          {(meData?.classes || []).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Classes assigned</div>
+              {(meData.classes || []).map((c) => (
+                <div key={c.id} style={{ padding: "6px 0", borderBottom: "1px solid var(--line)", fontSize: 14, fontWeight: 600 }}>
+                  Class {c.name}
+                </div>
+              ))}
+            </div>
+          )}
+          {uniqueSubjects.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>Subjects taught</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {uniqueSubjects.map((s) => (
+                  <span key={s} className="badge" style={{ background: "rgba(124,92,255,0.15)", color: "var(--primary)" }}>{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+    </>
+  );
+}
+
 export const teacherNav = [
   { key: "dashboard",  label: "My Class",        icon: "🏠", Component: Dashboard },
   { key: "attendance", label: "Attendance",       icon: "🗓️", Component: AttendanceEntry },
@@ -1506,4 +1561,5 @@ export const teacherNav = [
   { key: "reports",    label: "Reports",          icon: "📄", Component: Reports },
   { key: "notes",      label: "Notes to Parent",  icon: "📝", Component: Notes },
   { key: "messages",   label: "Messages",         icon: "💬", Component: Messages },
+  { key: "myprofile",  label: "My Profile",       icon: "👤", Component: MyProfile },
 ];
