@@ -1,13 +1,39 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
-const { requireRole, CAN } = require("../auth");
+const { requireRole, CAN, resolveDbUser, assertTeacherClass, getTeacherClassIds } = require("../auth");
 
 // GET /marks?examId=&studentId=  -> [{ subjectId, subject, mark }] (one student)
+// Student/parent: studentId must be their own. Teacher: student must be in their class.
 router.get("/", h(async (req, res) => {
   const { examId, studentId } = req.query;
   if (!examId || !studentId)
     return res.status(400).json({ error: "examId and studentId required" });
+
+  const { role } = req;
+
+  if (role === "student" || role === "parent") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (!uid) return res.status(403).json({ error: "Account not linked" });
+    const [[owned]] = await db.query(
+      "SELECT id FROM students WHERE id = ? AND user_id = ? AND school_id = ?",
+      [studentId, uid, req.schoolId]
+    );
+    if (!owned) return res.status(403).json({ error: "You can only view your own marks" });
+  }
+
+  if (role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) {
+      const classIds = await getTeacherClassIds(db, uid, req.schoolId);
+      const [[inClass]] = await db.query(
+        "SELECT id FROM students WHERE id = ? AND class_id IN (?) AND school_id = ?",
+        [studentId, classIds.length ? classIds : [0], req.schoolId]
+      );
+      if (!inClass) return res.status(403).json({ error: "Student not in your class" });
+    }
+  }
+
   const [rows] = await db.query(
     `SELECT m.subject_id AS subjectId, sub.name AS subject, m.mark
      FROM marks m JOIN subjects sub ON sub.id = m.subject_id
@@ -18,8 +44,35 @@ router.get("/", h(async (req, res) => {
   res.json(rows);
 }));
 
-// GET /marks/student/:id  -> all exams with all subjects for one student (for report)
+// GET /marks/student/:id  -> all exams for one student (for report card)
+// Student/parent: can only fetch their own record.
+// Teacher: student must be in their class.
 router.get("/student/:id", h(async (req, res) => {
+  const targetId = Number(req.params.id);
+  const { role } = req;
+
+  if (role === "student" || role === "parent") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (!uid) return res.status(403).json({ error: "Account not linked" });
+    const [[owned]] = await db.query(
+      "SELECT id FROM students WHERE id = ? AND user_id = ? AND school_id = ?",
+      [targetId, uid, req.schoolId]
+    );
+    if (!owned) return res.status(403).json({ error: "You can only view your own marks" });
+  }
+
+  if (role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) {
+      const classIds = await getTeacherClassIds(db, uid, req.schoolId);
+      const [[inClass]] = await db.query(
+        "SELECT id FROM students WHERE id = ? AND class_id IN (?) AND school_id = ?",
+        [targetId, classIds.length ? classIds : [0], req.schoolId]
+      );
+      if (!inClass) return res.status(403).json({ error: "Student not in your class" });
+    }
+  }
+
   const [rows] = await db.query(
     `SELECT e.id AS examId, e.name AS examName, e.status,
             sub.name AS subject, m.mark
@@ -29,7 +82,7 @@ router.get("/student/:id", h(async (req, res) => {
      LEFT JOIN marks m ON m.exam_id = e.id AND m.student_id = ? AND m.subject_id = sub.id
      WHERE e.school_id = ?
      ORDER BY e.id, sub.id`,
-    [req.params.id, req.schoolId]
+    [targetId, req.schoolId]
   );
 
   // Group by exam
@@ -44,10 +97,17 @@ router.get("/student/:id", h(async (req, res) => {
 
 // GET /marks/grid?examId=&classId=&subjectId=
 //   -> [{ studentId, roll, name, mark }]  (for the marks-entry grid)
+// Teacher: classId must be one of their classes.
 router.get("/grid", h(async (req, res) => {
   const { examId, classId, subjectId } = req.query;
   if (!examId || !classId || !subjectId)
     return res.status(400).json({ error: "examId, classId, subjectId required" });
+
+  if (req.role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) await assertTeacherClass(db, uid, classId, req.schoolId);
+  }
+
   const [rows] = await db.query(
     `SELECT s.id AS studentId, s.roll_no AS roll, s.name,
             (SELECT mark FROM marks m
@@ -60,11 +120,17 @@ router.get("/grid", h(async (req, res) => {
   res.json(rows);
 }));
 
-// POST /marks/bulk  { examId, subjectId, marks:[{studentId, mark}] }  -> upsert
+// POST /marks/bulk  { examId, subjectId, classId, marks:[{studentId, mark}] }  -> upsert
+// Teacher: classId must be one of their classes AND subjectId must be one they teach.
 router.post("/bulk", requireRole(...CAN.ENTER_MARKS), h(async (req, res) => {
-  const { examId, subjectId, marks } = req.body;
+  const { examId, subjectId, classId, marks } = req.body;
   if (!examId || !subjectId || !Array.isArray(marks))
     return res.status(400).json({ error: "examId, subjectId, marks[] required" });
+
+  if (req.role === "teacher" && classId) {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) await assertTeacherClass(db, uid, classId, req.schoolId);
+  }
 
   // can't enter marks once the exam is locked
   const [[exam]] = await db.query(

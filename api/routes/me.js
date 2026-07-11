@@ -54,25 +54,40 @@ router.get("/", h(async (req, res) => {
 
   // ── Teacher ─────────────────────────────────────────────────────────────
   if (role === "teacher") {
-    // Primary class (class_teacher_id = this user)
+    // Primary / home class (where this user is the class teacher)
     const [[cls]] = await db.query(
       "SELECT id, name FROM classes WHERE class_teacher_id = ? AND school_id = ?",
       [u.id, schoolId]
     );
-    // Subjects they teach (any class)
+
+    // ALL subjects + classes this teacher is assigned to
     const [subs] = await db.query(
-      `SELECT DISTINCT s.id, s.name, c.name AS class_name
+      `SELECT DISTINCT s.id, s.name, c.name AS class_name, c.id AS class_id
        FROM teacher_subject_class tsc
        JOIN subjects s ON s.id = tsc.subject_id
        JOIN classes  c ON c.id = tsc.class_id
        WHERE tsc.teacher_id = ? AND tsc.school_id = ?`,
       [u.id, schoolId]
     );
+
+    // Distinct classes this teacher can access (via subject assignments OR home class)
+    const classMap = {};
+    subs.forEach((s) => { classMap[s.class_id] = s.class_name; });
+    if (cls) classMap[cls.id] = cls.name;
+    const classes = Object.entries(classMap).map(([id, name]) => ({ id: Number(id), name }))
+                          .sort((a, b) => a.name.localeCompare(b.name));
+    const classIds = classes.map((c) => c.id);
+
+    // Primary class defaults to home class, else first assigned class
+    const primaryClass = cls || classes[0] || null;
+
     return res.json({
       ...base,
-      classId:   cls ? cls.id   : null,
-      className: cls ? cls.name : null,
-      subjects:  subs,
+      classId:   primaryClass ? primaryClass.id   : null,
+      className: primaryClass ? primaryClass.name : null,
+      classIds,   // ALL classes this teacher can access — used for class selectors
+      classes,    // [{id, name}] — full list for dropdowns
+      subjects: subs,
     });
   }
 

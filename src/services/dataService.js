@@ -58,8 +58,8 @@ export const getMarks = (examId, studentId) =>
 export const getStudentMarksAll = (studentId) => get(`/marks/student/${studentId}`);
 export const getMarksGrid = (examId, classId, subjectId) =>
   get(`/marks/grid?examId=${examId}&classId=${classId}&subjectId=${subjectId}`);
-export const saveMarks = (examId, subjectId, marks) =>
-  post("/marks/bulk", { examId, subjectId, marks });
+export const saveMarks = (examId, subjectId, marks, classId) =>
+  post("/marks/bulk", { examId, subjectId, marks, ...(classId ? { classId } : {}) });
 export const getResultsSummary = (examId) => get(`/results/summary?examId=${examId}`);
 export const getClassResults = (examId, classId) =>
   get(`/results/class?examId=${examId}&classId=${classId}`);

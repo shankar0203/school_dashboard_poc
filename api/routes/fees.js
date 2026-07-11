@@ -1,12 +1,38 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
-const { requireRole, CAN } = require("../auth");
+const { requireRole, CAN, resolveDbUser, getTeacherClassIds } = require("../auth");
 
 // GET /fees?studentId=  -> { total, paid, terms:[{id,term,due,paid,date,receipt}] }
+// Students/parents can only fetch their own fees. Teachers can only fetch students in their class.
 router.get("/", h(async (req, res) => {
   const { studentId } = req.query;
   if (!studentId) return res.status(400).json({ error: "studentId required" });
+
+  const { role } = req;
+
+  if (role === "student" || role === "parent") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (!uid) return res.status(403).json({ error: "Account not linked" });
+    const [[owned]] = await db.query(
+      "SELECT id FROM students WHERE id = ? AND user_id = ? AND school_id = ?",
+      [studentId, uid, req.schoolId]
+    );
+    if (!owned) return res.status(403).json({ error: "You can only view your own fees" });
+  }
+
+  if (role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) {
+      const classIds = await getTeacherClassIds(db, uid, req.schoolId);
+      const [[inClass]] = await db.query(
+        "SELECT id FROM students WHERE id = ? AND class_id IN (?) AND school_id = ?",
+        [studentId, classIds.length ? classIds : [0], req.schoolId]
+      );
+      if (!inClass) return res.status(403).json({ error: "Student not in your class" });
+    }
+  }
+
   const [terms] = await db.query(
     `SELECT id, item AS term, amount_due AS due, amount_paid AS paid,
             COALESCE(DATE_FORMAT(due_date,'%d %b %Y'),'') AS date,

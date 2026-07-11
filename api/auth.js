@@ -134,4 +134,71 @@ const CAN = {
   MANAGE_META: ["owner", "principal", "schoolAdmin"],
 };
 
-module.exports = { requireAuth, requireRole, roleFromGroups, CAN, AUTH_DISABLED };
+// -------------------------------------------------------------------------
+//  resolveDbUser — get the DB users.id for the current request's sub.
+//  Returns null if not found. Call once per route that needs the DB user id.
+// -------------------------------------------------------------------------
+async function resolveDbUser(db, sub, email, schoolId) {
+  // Fast path: match by cognito_sub
+  let [[u]] = await db.query(
+    "SELECT id FROM users WHERE cognito_sub = ? AND school_id = ?",
+    [sub, schoolId]
+  );
+  if (u) return u.id;
+
+  // Fallback: match by email (admin pre-seeded before first login)
+  const cleanEmail = (email || "").trim().toLowerCase();
+  if (cleanEmail) {
+    [[u]] = await db.query(
+      "SELECT id FROM users WHERE LOWER(email) = ? AND school_id = ?",
+      [cleanEmail, schoolId]
+    );
+    if (u) {
+      // Store sub for next time
+      await db.query("UPDATE users SET cognito_sub = ? WHERE id = ?", [sub, u.id]);
+      return u.id;
+    }
+  }
+  return null;
+}
+
+// -------------------------------------------------------------------------
+//  assertTeacherClass — 403 if this teacher doesn't teach the given class.
+//  Pass req.teacherUserId (set by resolveDbUser) and the classId to check.
+// -------------------------------------------------------------------------
+async function assertTeacherClass(db, teacherUserId, classId, schoolId) {
+  const [[row]] = await db.query(
+    `SELECT 1 FROM teacher_subject_class
+     WHERE teacher_id = ? AND class_id = ? AND school_id = ?
+     UNION
+     SELECT 1 FROM classes
+     WHERE class_teacher_id = ? AND id = ? AND school_id = ?
+     LIMIT 1`,
+    [teacherUserId, classId, schoolId, teacherUserId, classId, schoolId]
+  );
+  if (!row) {
+    const err = new Error("You are not assigned to this class");
+    err.status = 403;
+    throw err;
+  }
+}
+
+// -------------------------------------------------------------------------
+//  getTeacherClassIds — returns [classId, ...] the teacher is allowed to see
+// -------------------------------------------------------------------------
+async function getTeacherClassIds(db, teacherUserId, schoolId) {
+  const [rows] = await db.query(
+    `SELECT DISTINCT c.id
+     FROM teacher_subject_class tsc JOIN classes c ON c.id = tsc.class_id
+     WHERE tsc.teacher_id = ? AND tsc.school_id = ?
+     UNION
+     SELECT id FROM classes WHERE class_teacher_id = ? AND school_id = ?`,
+    [teacherUserId, schoolId, teacherUserId, schoolId]
+  );
+  return rows.map((r) => r.id);
+}
+
+module.exports = {
+  requireAuth, requireRole, roleFromGroups, CAN, AUTH_DISABLED,
+  resolveDbUser, assertTeacherClass, getTeacherClassIds,
+};

@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const db = require("../db");
 const { h } = require("../util");
-const { requireRole, CAN } = require("../auth");
+const { requireRole, CAN, resolveDbUser, assertTeacherClass, getTeacherClassIds } = require("../auth");
 
 // columns a client may set on create/update
 const FIELDS = [
@@ -11,14 +11,62 @@ const FIELDS = [
   "admission_date", "notes",
 ];
 
-// GET /students            -> all students (school)
-// GET /students?class=8-A  -> students in a class (by name)
-// GET /students?classId=5  -> students in a class (by id)
-router.get("/", h(async (req, res) => {
+// ── Role-scoped list helper ──────────────────────────────────────────────────
+// Returns WHERE clauses + args scoped to the logged-in user's role.
+// teacher  -> only their assigned classes
+// student  -> only their own record
+// parent   -> only their linked child's record
+// principal/admin/owner -> whole school
+async function scopedWhere(req) {
   const where = ["s.school_id = ?"];
-  const args = [req.schoolId];
-  if (req.query.classId) { where.push("s.class_id = ?"); args.push(req.query.classId); }
-  else if (req.query.class) { where.push("c.name = ?"); args.push(req.query.class); }
+  const args  = [req.schoolId];
+  const { role } = req;
+
+  if (role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (!uid) return { where, args }; // unlinked teacher — empty result is safe
+    const classIds = await getTeacherClassIds(db, uid, req.schoolId);
+    if (!classIds.length) {
+      where.push("1 = 0"); // teacher exists but teaches no class yet
+    } else if (req.query.classId) {
+      // honour explicit filter, but only if teacher is allowed
+      if (!classIds.map(String).includes(String(req.query.classId))) {
+        where.push("1 = 0");
+      } else {
+        where.push("s.class_id = ?"); args.push(req.query.classId);
+      }
+    } else if (req.query.class) {
+      where.push("c.name = ? AND s.class_id IN (?)"); args.push(req.query.class, classIds);
+    } else {
+      where.push("s.class_id IN (?)"); args.push(classIds);
+    }
+
+  } else if (role === "student") {
+    // Student sees only their own record
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    where.push(uid ? "s.user_id = ?" : "1 = 0");
+    if (uid) args.push(uid);
+
+  } else if (role === "parent") {
+    // Parent sees their linked child only
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    where.push(uid ? "s.user_id = ?" : "1 = 0");
+    if (uid) args.push(uid);
+
+  } else {
+    // principal / schoolAdmin / owner — full school, honour optional filters
+    if (req.query.classId) { where.push("s.class_id = ?"); args.push(req.query.classId); }
+    else if (req.query.class) { where.push("c.name = ?"); args.push(req.query.class); }
+  }
+
+  return { where, args };
+}
+
+// GET /students            -> list scoped to logged-in role
+// GET /students?class=8-A  -> scoped + filtered by class name
+// GET /students?classId=5  -> scoped + filtered by class id
+router.get("/", h(async (req, res) => {
+  const { where, args } = await scopedWhere(req);
 
   const [rows] = await db.query(
     `SELECT s.id, s.roll_no AS roll, s.name, c.name AS cls,
@@ -46,8 +94,35 @@ router.get("/", h(async (req, res) => {
   res.json(rows);
 }));
 
-// GET /students/:id  -> full profile (all fields + class name + attendance% + fee summary)
+// GET /students/:id  -> full profile — enforces ownership for student/parent/teacher
 router.get("/:id", h(async (req, res) => {
+  const targetId = Number(req.params.id);
+  const { role } = req;
+
+  // Students and parents can only fetch their own record
+  if (role === "student" || role === "parent") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (!uid) return res.status(403).json({ error: "Account not linked to a student record" });
+    const [[owned]] = await db.query(
+      "SELECT id FROM students WHERE id = ? AND user_id = ? AND school_id = ?",
+      [targetId, uid, req.schoolId]
+    );
+    if (!owned) return res.status(403).json({ error: "You can only view your own record" });
+  }
+
+  // Teachers can only fetch students in their classes
+  if (role === "teacher") {
+    const uid = await resolveDbUser(db, req.user.sub, req.user.email, req.schoolId);
+    if (uid) {
+      const classIds = await getTeacherClassIds(db, uid, req.schoolId);
+      const [[inClass]] = await db.query(
+        "SELECT id FROM students WHERE id = ? AND class_id IN (?) AND school_id = ?",
+        [targetId, classIds.length ? classIds : [0], req.schoolId]
+      );
+      if (!inClass) return res.status(403).json({ error: "This student is not in your class" });
+    }
+  }
+
   const [[s]] = await db.query(
     `SELECT s.*, c.name AS class_name,
             ROUND(COALESCE(AVG(a.status = 'present') * 100, 100)) AS attendance_pct

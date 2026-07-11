@@ -8,15 +8,17 @@ import { Card, Stat, PageHead, Tabs, Message, Loading, Donut } from "../componen
 import StudentForm from "../components/StudentForm.jsx";
 import StudentProfile from "../components/StudentProfile.jsx";
 
-const { classes } = config.academics;
-
 // Resolve class identity from /auth/me.
-// Falls back to 8-A so the app works before the admin links the teacher account.
+// Returns the primary class plus the full list of classes this teacher can access.
 function useMyClass() {
   const { meData } = useApp();
-  const cls  = meData?.className  || "8-A";
-  const clsId = meData?.classId   || (classes.indexOf("8-A") + 1);
-  return { MY_CLASS: cls, MY_CLASS_ID: clsId };
+  const cls      = meData?.className || null;
+  const clsId    = meData?.classId   || null;
+  // meData.classes = [{id, name}] — all classes this teacher is assigned to
+  const myClasses = meData?.classes?.length
+    ? meData.classes
+    : (cls ? [{ id: clsId, name: cls }] : []);
+  return { MY_CLASS: cls, MY_CLASS_ID: clsId, myClasses };
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -382,30 +384,50 @@ function Dashboard() {
 
 // ─── Attendance Entry ────────────────────────────────────────────────────────
 function AttendanceEntry() {
-  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
-  const [date, setDate] = useState(getLocalDateStr());
-  const day = useApi(() => api.getAttendanceByDate(MY_CLASS_ID, date), [MY_CLASS_ID, date]);
+  const { MY_CLASS, MY_CLASS_ID, myClasses } = useMyClass();
+  const [date, setDate]       = useState(getLocalDateStr());
+  const [activeClassId, setActiveClassId] = useState(MY_CLASS_ID);
+  const [activeClassName, setActiveClassName] = useState(MY_CLASS);
+
+  // Sync initial values once meData loads
+  React.useEffect(() => {
+    if (MY_CLASS_ID && !activeClassId) { setActiveClassId(MY_CLASS_ID); setActiveClassName(MY_CLASS); }
+  }, [MY_CLASS_ID]);
+
+  const day  = useApi(() => api.getAttendanceByDate(activeClassId, date), [activeClassId, date]);
   const rows = day.data || [];
-  const [marks, setMarks] = useState({});        // studentId -> 'present'|'absent'
-  // current status = local edit, else loaded status, else default present
+  const [marks, setMarks] = useState({});
   const statusOf = (r) => marks[r.studentId] || r.status || "present";
   const toggle = (r) => setMarks({ ...marks, [r.studentId]: statusOf(r) === "present" ? "absent" : "present" });
   const present = rows.filter((r) => statusOf(r) === "present").length;
 
+  const handleClassChange = (e) => {
+    const id = Number(e.target.value);
+    const cls = myClasses.find((c) => c.id === id);
+    setActiveClassId(id);
+    setActiveClassName(cls ? cls.name : "");
+    setMarks({});
+  };
+
   const save = async () => {
     const records = rows.map((r) => ({ studentId: r.studentId, status: statusOf(r) }));
-    const res = await api.saveAttendance(MY_CLASS_ID, date, records);
+    const res = await api.saveAttendance(activeClassId, date, records);
     setMarks({}); day.reload();
     alert(`Saved attendance for ${date} (${res.saved} students).`);
   };
 
   return (
     <>
-      <PageHead title={`Attendance — ${MY_CLASS}`} sub="Pick a date, tap to toggle, Save (stored for the year)"
+      <PageHead title={`Attendance — ${activeClassName || "…"}`} sub="Pick a class & date, tap to toggle, Save (stored for the year)"
         right={<span className="pill">{present} present · {rows.length - present} absent</span>} />
       <Card title={
         <>
-          <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {myClasses.length > 1 && (
+              <select className="compose" style={{ maxWidth: 160 }} value={activeClassId || ""} onChange={handleClassChange}>
+                {myClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
               style={{ background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--txt)", borderRadius: 8, padding: "6px 10px", fontSize: 13 }} />
           </span>
@@ -435,15 +457,40 @@ function AttendanceEntry() {
 
 // ─── Students ────────────────────────────────────────────────────────────────
 function Students() {
-  const { MY_CLASS, MY_CLASS_ID } = useMyClass();
-  const list = useApi(() => api.listStudents(MY_CLASS), [MY_CLASS]);
-  const [form, setForm] = useState(null);      // {student} | {student:null} when open
+  const { MY_CLASS, MY_CLASS_ID, myClasses } = useMyClass();
+  const [activeClass, setActiveClass] = useState(null); // {id, name}
+
+  // Sync once meData loads
+  React.useEffect(() => {
+    if (!activeClass && MY_CLASS_ID) setActiveClass({ id: MY_CLASS_ID, name: MY_CLASS });
+  }, [MY_CLASS_ID]);
+
+  const cls = activeClass?.name || MY_CLASS;
+  const list = useApi(() => api.listStudents(cls), [cls]);
+  const [form, setForm] = useState(null);
   const [profileId, setProfileId] = useState(null);
   const done = () => { setForm(null); list.reload(); };
+
+  const handleClassChange = (e) => {
+    const id = Number(e.target.value);
+    const found = myClasses.find((c) => c.id === id);
+    setActiveClass(found || null);
+  };
+
   return (
     <>
-      <PageHead title="Students" sub="View, add & edit your class (saved to the database)"
-        right={<button className="btn" onClick={() => setForm({ student: null })}>＋ Add student</button>} />
+      <PageHead title="Students"
+        sub={myClasses.length > 1 ? "Select a class to view students" : `Class ${cls} (saved to the database)`}
+        right={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {myClasses.length > 1 && (
+              <select className="compose" style={{ maxWidth: 160 }} value={activeClass?.id || ""} onChange={handleClassChange}>
+                {myClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <button className="btn" onClick={() => setForm({ student: null })}>＋ Add student</button>
+          </div>
+        } />
       <Card>
         <Loading state={list}>
           <table>
@@ -488,8 +535,8 @@ function Students() {
       {form && (
         <StudentForm
           student={form.student}
-          classes={classes}
-          lockedClass={MY_CLASS}
+          classes={myClasses.map((c) => c.name)}
+          lockedClass={cls}
           onClose={() => setForm(null)}
           onSaved={done}
         />
@@ -522,11 +569,18 @@ function Results() {
 }
 
 function EnterMarks() {
+  const { myClasses } = useMyClass();
   const exams = useApi(() => api.getExams(), []);
   const subs = useApi(() => api.getSubjects(), []);
   const [examId, setExamId] = useState("");
   const [classId, setClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
+
+  // Pre-select the first class once myClasses loads
+  React.useEffect(() => {
+    if (!classId && myClasses.length) setClassId(String(myClasses[0].id));
+  }, [myClasses.length]);
+
   const ready = examId && classId && subjectId;
   const grid = useApi(
     () => (ready ? api.getMarksGrid(examId, classId, subjectId) : Promise.resolve([])),
@@ -538,7 +592,7 @@ function EnterMarks() {
   const onChange = (sid, v) => setEdits({ ...edits, [sid]: v });
   const save = async () => {
     const marks = rows.map((r) => ({ studentId: r.studentId, mark: edits[r.studentId] ?? r.mark }));
-    const r = await api.saveMarks(examId, subjectId, marks);
+    const r = await api.saveMarks(examId, subjectId, marks, classId);
     alert(`Saved ${r.saved} marks.`);
     setEdits({}); grid.reload();
   };
@@ -554,7 +608,7 @@ function EnterMarks() {
           </select>
           <select className="compose" style={{ maxWidth: 160 }} value={classId} onChange={(e) => setClassId(e.target.value)}>
             <option value="">Class…</option>
-            {classes.map((c, i) => <option key={c} value={i + 1}>{c}</option>)}
+            {myClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <select className="compose" style={{ maxWidth: 180 }} value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
             <option value="">Subject…</option>
@@ -1382,8 +1436,13 @@ function StudentReport({ studentId, onBack }) {
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
 function Reports() {
-  const { MY_CLASS } = useMyClass();
-  const list = useApi(() => api.listStudents(MY_CLASS), [MY_CLASS]);
+  const { MY_CLASS, MY_CLASS_ID, myClasses } = useMyClass();
+  const [activeClass, setActiveClass] = useState(null);
+  React.useEffect(() => {
+    if (!activeClass && MY_CLASS_ID) setActiveClass({ id: MY_CLASS_ID, name: MY_CLASS });
+  }, [MY_CLASS_ID]);
+  const cls = activeClass?.name || MY_CLASS;
+  const list = useApi(() => api.listStudents(cls), [cls]);
   const [selectedId, setSelectedId] = useState(null);
 
   if (selectedId) {
@@ -1392,7 +1451,15 @@ function Reports() {
 
   return (
     <>
-      <PageHead title="Student Reports" sub="Select a student to view full profile and download PDF" />
+      <PageHead title="Student Reports" sub="Select a student to view full profile and download PDF"
+        right={myClasses.length > 1 && (
+          <select className="compose" style={{ maxWidth: 160 }} value={activeClass?.id || ""} onChange={(e) => {
+            const found = myClasses.find((c) => c.id === Number(e.target.value));
+            setActiveClass(found || null);
+          }}>
+            {myClasses.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )} />
       <Card>
         <Loading state={list}>
           <div className="grid g4" style={{ gap:10 }}>
