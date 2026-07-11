@@ -105,35 +105,26 @@ function request(method, url, token, body) {
 const GET  = (url, token)       => request('GET',  url, token);
 const POST = (url, token, body) => request('POST', url, token, body);
 
-// ── Cognito auth ──────────────────────────────────────────────────────────────
+// ── Cognito auth (via AWS CLI — most reliable on EC2) ─────────────────────────
 function getToken(email, password) {
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      AuthFlow: 'USER_PASSWORD_AUTH',
-      ClientId: CLIENT_ID,
-      AuthParameters: { USERNAME: email, PASSWORD: password },
-    });
-    const req = https.request({
-      hostname: `cognito-idp.${REGION}.amazonaws.com`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-amz-json-1.1',
-        'X-Amz-Target': 'AmazonCognitoIdentityProviderService.InitiateAuth',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, res => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => {
-        const p = JSON.parse(data);
-        if (p.AuthenticationResult) resolve(p.AuthenticationResult.IdToken);
-        else reject(new Error(p.message || p.__type || JSON.stringify(p)));
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync(
+      `aws cognito-idp initiate-auth \
+        --auth-flow USER_PASSWORD_AUTH \
+        --client-id "${CLIENT_ID}" \
+        --auth-parameters USERNAME="${email}",PASSWORD="${password}" \
+        --region ${REGION} \
+        --output json`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    const data = JSON.parse(out);
+    if (data.AuthenticationResult) return Promise.resolve(data.AuthenticationResult.IdToken);
+    return Promise.reject(new Error(JSON.stringify(data)));
+  } catch (e) {
+    const msg = (e.stderr || e.stdout || e.message || '').toString().trim();
+    return Promise.reject(new Error(msg));
+  }
 }
 
 // ── section header ────────────────────────────────────────────────────────────
