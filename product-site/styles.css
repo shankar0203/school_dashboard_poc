@@ -21,6 +21,28 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* Cursor-tracking spotlight — a soft glow that follows the mouse across
+   the whole page. Sits behind all content (z-index below main/footer)
+   and only becomes visible through the page background and the
+   semi-transparent card surfaces. */
+.cursor-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    600px circle at var(--mx, 50vw) var(--my, 40vh),
+    rgba(124, 58, 237, 0.16),
+    transparent 55%
+  );
+}
+
+main, .footer {
+  position: relative;
+  z-index: 1;
 }
 
 .container {
@@ -158,6 +180,12 @@ body {
   overflow: hidden;
 }
 
+.hero-preview {
+  transition: transform 0.15s ease-out;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
 .preview-stat {
   flex: 1;
   padding: 24px 20px;
@@ -241,6 +269,44 @@ body {
   border-radius: var(--radius);
   padding: 28px;
   backdrop-filter: blur(6px);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+/* Spotlight-on-hover — a soft highlight that tracks the cursor within
+   any card, role block, or the hero preview strip. Applied via JS
+   (adds the .spotlight-card class and sets --cx/--cy on mousemove). */
+.spotlight-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.spotlight-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(
+    260px circle at var(--cx, 50%) var(--cy, 50%),
+    rgba(124, 58, 237, 0.16),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.spotlight-card:hover::before {
+  opacity: 1;
+}
+
+.spotlight-card:hover {
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.spotlight-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .card h3 {
