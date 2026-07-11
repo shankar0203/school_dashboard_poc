@@ -180,8 +180,8 @@ emit('');
 emit('-- USERS ----------------------------------------------------------------');
 emit("-- 1=principal  2=admin  3–17=class teachers (one per class in order 6-A…10-C)");
 const userInserts = [];
-userInserts.push(`(1,1,'principal','Mrs. Lakshmi Narayanan','principal@vidyam.school','9800000001','active')`);
-userInserts.push(`(2,1,'admin','Mr. Ramesh Sundaram','admin@vidyam.school','9800000002','active')`);
+userInserts.push(`(1,1,'principal','Mrs. Lakshmi Narayanan','principal@invisos.in','9800000001','active')`);
+userInserts.push(`(2,1,'admin','Mr. Ramesh Sundaram','admin@invisos.in','9800000002','active')`);
 
 const teacherNames = [
   // 6-A, 6-B, 6-C
@@ -208,10 +208,13 @@ const teacherNames = [
 
 for (let i = 0; i < teacherNames.length; i++) {
   const uid = CLASS_TEACHER_START + i;
-  const [name, emailUser] = teacherNames[i];
+  const [name] = teacherNames[i];
   const cls = CLASSES[i];
+  // Email format matches Cognito users: {grade}{section}-T-{firstName}@invisos.in
+  const firstName = name.replace(/^(Mr\.|Mrs\.|Ms\.) /, '').split(' ')[0].toLowerCase();
+  const email = `${cls.grade}${cls.section}-T-${firstName}@invisos.in`;
   const phone = `980000${String(uid).padStart(4, '0')}`;
-  userInserts.push(`(${uid},1,'teacher','${name}','${emailUser}@vidyam.school','${phone}','active')`);
+  userInserts.push(`(${uid},1,'teacher','${name}','${email}','${phone}','active')`);
 }
 
 emit(`INSERT INTO users (id,school_id,role,name,email,phone,status) VALUES`);
@@ -472,6 +475,14 @@ emit(`  (1,1,'principal','student_broadcast',NULL,NULL,'Half-yearly exams begin 
 emit(`  (1,1,'principal','teacher_broadcast',NULL,NULL,'Staff meeting Mon 4 PM. Marks entry for Half-Yearly closes Fri.'),`);
 emit(`  (1,3,'teacher','student_broadcast',NULL,NULL,'6-A students: bring geometry box on Monday.'),`);
 emit(`  (1,1,'principal','direct',3,NULL,'6-A attendance is improving — keep it up!');`);
+emit('');
+
+// ─── TEST STUDENT USER ───────────────────────────────────────────────────
+// Links Cognito user 6A-S-surya@invisos.in to student_id=1 (first student in 6-A)
+emit('-- TEST STUDENT USER (links Cognito 6A-S-surya@invisos.in to student id=1) ---');
+emit(`INSERT INTO users (id,school_id,role,name,email,phone,status) VALUES`);
+emit(`  (18,1,'student','Surya (Test Student)','6a-s-surya@invisos.in','9000000018','active');`);
+emit(`UPDATE students SET user_id=18 WHERE id=1 AND school_id=1;`);
 emit('');
 
 emit('-- =========================================================================');

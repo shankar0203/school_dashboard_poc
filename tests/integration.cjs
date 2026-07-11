@@ -145,46 +145,46 @@ function section(title) {
 async function testPrincipal(token) {
   section('PRINCIPAL — full school access');
 
-  const me = await GET(`${API}/api/me`, token);
+  const me = await GET(`${API}/me`, token);
   assert('GET /me → role=principal', me.body.role === 'principal', me.body.role);
 
-  const students = await GET(`${API}/api/students`, token);
+  const students = await GET(`${API}/students`, token);
   assertCount('GET /students → all 300 students', students, 295, 305);
 
-  const cls6A = await GET(`${API}/api/students?classId=1`, token);
+  const cls6A = await GET(`${API}/students?classId=1`, token);
   assertExact('GET /students?classId=1 → exactly 20', cls6A, 20);
 
-  const cls8A = await GET(`${API}/api/students?classId=7`, token);
+  const cls8A = await GET(`${API}/students?classId=7`, token);
   assertExact('GET /students?classId=7 → exactly 20', cls8A, 20);
 
-  const cls10A = await GET(`${API}/api/students?classId=13`, token);
+  const cls10A = await GET(`${API}/students?classId=13`, token);
   assertExact('GET /students?classId=13 → exactly 20', cls10A, 20);
 
-  const s1 = await GET(`${API}/api/students/1`, token);
+  const s1 = await GET(`${API}/students/1`, token);
   assertStatus('GET /students/1 → 200', s1, 200);
 
-  const s200 = await GET(`${API}/api/students/200`, token);
+  const s200 = await GET(`${API}/students/200`, token);
   assertStatus('GET /students/200 → 200', s200, 200);
 
-  const att = await GET(`${API}/api/attendance/classwise`, token);
+  const att = await GET(`${API}/attendance/classwise`, token);
   assert('GET /attendance/classwise → 15 classes',
     typeof att.body === 'object' && Object.keys(att.body).length === 15,
     `got ${Object.keys(att.body || {}).length} classes`);
 
-  const byDate = await GET(`${API}/api/attendance/by-date?classId=1&date=2025-06-05`, token);
+  const byDate = await GET(`${API}/attendance/by-date?classId=1&date=2025-06-05`, token);
   assertCount('GET /attendance/by-date class 1 → 20 students', byDate, 20, 20);
 
-  const marksGrid = await GET(`${API}/api/marks/grid?examId=1&classId=1&subjectId=1`, token);
+  const marksGrid = await GET(`${API}/marks/grid?examId=1&classId=1&subjectId=1`, token);
   assertCount('GET /marks/grid → 20 rows', marksGrid, 20, 20);
 
-  const fees = await GET(`${API}/api/fees?studentId=1`, token);
+  const fees = await GET(`${API}/fees?studentId=1`, token);
   assertStatus('GET /fees?studentId=1 → 200', fees, 200);
 }
 
 async function testTeacher(token, label, myClassId, myStudentId, otherClassId, otherStudentId) {
   section(`TEACHER — ${label} (class_id=${myClassId}, student_id=${myStudentId})`);
 
-  const me = await GET(`${API}/api/me`, token);
+  const me = await GET(`${API}/me`, token);
   assert(`GET /me → role=teacher`, me.body.role === 'teacher', me.body.role);
   assert(`GET /me → classId=${myClassId}`, me.body.classId === myClassId,
     `got ${me.body.classId}`);
@@ -192,71 +192,71 @@ async function testTeacher(token, label, myClassId, myStudentId, otherClassId, o
     JSON.stringify(me.body.classIds));
 
   // own class — should work
-  const own = await GET(`${API}/api/students?classId=${myClassId}`, token);
+  const own = await GET(`${API}/students?classId=${myClassId}`, token);
   assertExact(`GET /students?classId=${myClassId} → 20 students`, own, 20);
 
   // other class filtered out — scopedWhere returns empty, not 403
-  const other = await GET(`${API}/api/students?classId=${otherClassId}`, token);
+  const other = await GET(`${API}/students?classId=${otherClassId}`, token);
   assertExact(`GET /students?classId=${otherClassId} → 0 (blocked)`, other, 0);
 
   // no filter — only own class returned
-  const all = await GET(`${API}/api/students`, token);
+  const all = await GET(`${API}/students`, token);
   assertExact(`GET /students (no filter) → 20 own class only`, all, 20);
 
   // own student detail
-  const sOwn = await GET(`${API}/api/students/${myStudentId}`, token);
+  const sOwn = await GET(`${API}/students/${myStudentId}`, token);
   assertStatus(`GET /students/${myStudentId} (own class) → 200`, sOwn, 200);
 
   // other student — 403
-  const sOther = await GET(`${API}/api/students/${otherStudentId}`, token);
+  const sOther = await GET(`${API}/students/${otherStudentId}`, token);
   assertStatus(`GET /students/${otherStudentId} (other class) → 403`, sOther, 403);
 
   // attendance classwise — own class only
-  const attCW = await GET(`${API}/api/attendance/classwise`, token);
+  const attCW = await GET(`${API}/attendance/classwise`, token);
   assert('GET /attendance/classwise → own class only',
     typeof attCW.body === 'object' && Object.keys(attCW.body).length === 1,
     `got ${Object.keys(attCW.body || {}).length} entries`);
 
   // attendance by date — own class
-  const attOwn = await GET(`${API}/api/attendance/by-date?classId=${myClassId}&date=2025-06-05`, token);
+  const attOwn = await GET(`${API}/attendance/by-date?classId=${myClassId}&date=2025-06-05`, token);
   assertCount(`GET /attendance/by-date own class → 20`, attOwn, 20, 20);
 
   // attendance by date — other class → 403
-  const attOther = await GET(`${API}/api/attendance/by-date?classId=${otherClassId}&date=2025-06-05`, token);
+  const attOther = await GET(`${API}/attendance/by-date?classId=${otherClassId}&date=2025-06-05`, token);
   assertStatus(`GET /attendance/by-date other class → 403`, attOther, 403);
 
   // attendance for own student
-  const attStu = await GET(`${API}/api/attendance/student/${myStudentId}`, token);
+  const attStu = await GET(`${API}/attendance/student/${myStudentId}`, token);
   assertStatus(`GET /attendance/student/${myStudentId} (own) → 200`, attStu, 200);
 
   // attendance for other student → 403
-  const attStuOther = await GET(`${API}/api/attendance/student/${otherStudentId}`, token);
+  const attStuOther = await GET(`${API}/attendance/student/${otherStudentId}`, token);
   assertStatus(`GET /attendance/student/${otherStudentId} (other) → 403`, attStuOther, 403);
 
   // marks grid — own class
-  const mgOwn = await GET(`${API}/api/marks/grid?examId=1&classId=${myClassId}&subjectId=1`, token);
+  const mgOwn = await GET(`${API}/marks/grid?examId=1&classId=${myClassId}&subjectId=1`, token);
   assertCount(`GET /marks/grid own class → 20`, mgOwn, 20, 20);
 
   // marks grid — other class → 403
-  const mgOther = await GET(`${API}/api/marks/grid?examId=1&classId=${otherClassId}&subjectId=1`, token);
+  const mgOther = await GET(`${API}/marks/grid?examId=1&classId=${otherClassId}&subjectId=1`, token);
   assertStatus(`GET /marks/grid other class → 403`, mgOther, 403);
 
   // marks for own student
-  const mOwn = await GET(`${API}/api/marks/student/${myStudentId}`, token);
+  const mOwn = await GET(`${API}/marks/student/${myStudentId}`, token);
   assertStatus(`GET /marks/student/${myStudentId} (own) → 200`, mOwn, 200);
 
   // marks for other student → 403
-  const mOther = await GET(`${API}/api/marks/student/${otherStudentId}`, token);
+  const mOther = await GET(`${API}/marks/student/${otherStudentId}`, token);
   assertStatus(`GET /marks/student/${otherStudentId} (other) → 403`, mOther, 403);
 
   // POST attendance — own class (no actual records, just check auth passes)
-  const postOwn = await POST(`${API}/api/attendance`, token,
+  const postOwn = await POST(`${API}/attendance`, token,
     { classId: myClassId, date: '2025-07-01', records: [{ studentId: myStudentId, status: 'present' }] });
   assert(`POST /attendance own class → 200 or 400`, [200, 400].includes(postOwn.status),
     `got ${postOwn.status}`);
 
   // POST attendance — other class → 403
-  const postOther = await POST(`${API}/api/attendance`, token,
+  const postOther = await POST(`${API}/attendance`, token,
     { classId: otherClassId, date: '2025-07-01', records: [{ studentId: otherStudentId, status: 'present' }] });
   assertStatus(`POST /attendance other class → 403`, postOther, 403);
 }
@@ -264,62 +264,62 @@ async function testTeacher(token, label, myClassId, myStudentId, otherClassId, o
 async function testStudent(token) {
   section('STUDENT — own record only');
 
-  const me = await GET(`${API}/api/me`, token);
+  const me = await GET(`${API}/me`, token);
   assert('GET /me → role=student', me.body.role === 'student', me.body.role);
   assert('GET /me → studentId=1',  me.body.studentId === 1, `got ${me.body.studentId}`);
 
   // own record
-  const own = await GET(`${API}/api/students`, token);
+  const own = await GET(`${API}/students`, token);
   assertExact('GET /students → 1 (own only)', own, 1);
 
-  const s1 = await GET(`${API}/api/students/1`, token);
+  const s1 = await GET(`${API}/students/1`, token);
   assertStatus('GET /students/1 (own) → 200', s1, 200);
 
   // other records → 403
-  const s2 = await GET(`${API}/api/students/2`, token);
+  const s2 = await GET(`${API}/students/2`, token);
   assertStatus('GET /students/2 (other) → 403', s2, 403);
 
-  const s50 = await GET(`${API}/api/students/50`, token);
+  const s50 = await GET(`${API}/students/50`, token);
   assertStatus('GET /students/50 (other) → 403', s50, 403);
 
   // attendance — own
-  const attOwn = await GET(`${API}/api/attendance/student/1`, token);
+  const attOwn = await GET(`${API}/attendance/student/1`, token);
   assertStatus('GET /attendance/student/1 (own) → 200', attOwn, 200);
   assert('Attendance has records', Array.isArray(attOwn.body) && attOwn.body.length > 0,
     `got ${attOwn.body?.length}`);
 
   // attendance — other → 403
-  const attOther = await GET(`${API}/api/attendance/student/2`, token);
+  const attOther = await GET(`${API}/attendance/student/2`, token);
   assertStatus('GET /attendance/student/2 (other) → 403', attOther, 403);
 
   // marks — own
-  const mOwn = await GET(`${API}/api/marks?examId=1&studentId=1`, token);
+  const mOwn = await GET(`${API}/marks?examId=1&studentId=1`, token);
   assertStatus('GET /marks?studentId=1 (own) → 200', mOwn, 200);
   assert('Marks has 5 subjects', Array.isArray(mOwn.body) && mOwn.body.length === 5,
     `got ${mOwn.body?.length}`);
 
   // marks — other → 403
-  const mOther = await GET(`${API}/api/marks?examId=1&studentId=2`, token);
+  const mOther = await GET(`${API}/marks?examId=1&studentId=2`, token);
   assertStatus('GET /marks?studentId=2 (other) → 403', mOther, 403);
 
   // marks all exams — own
-  const maOwn = await GET(`${API}/api/marks/student/1`, token);
+  const maOwn = await GET(`${API}/marks/student/1`, token);
   assertStatus('GET /marks/student/1 (own) → 200', maOwn, 200);
 
   // marks all exams — other → 403
-  const maOther = await GET(`${API}/api/marks/student/2`, token);
+  const maOther = await GET(`${API}/marks/student/2`, token);
   assertStatus('GET /marks/student/2 (other) → 403', maOther, 403);
 
   // fees — own
-  const fOwn = await GET(`${API}/api/fees?studentId=1`, token);
+  const fOwn = await GET(`${API}/fees?studentId=1`, token);
   assertStatus('GET /fees?studentId=1 (own) → 200', fOwn, 200);
 
   // fees — other → 403
-  const fOther = await GET(`${API}/api/fees?studentId=2`, token);
+  const fOther = await GET(`${API}/fees?studentId=2`, token);
   assertStatus('GET /fees?studentId=2 (other) → 403', fOther, 403);
 
   // cannot mark attendance (student role not in CAN.MARK_ATTENDANCE)
-  const postAtt = await POST(`${API}/api/attendance`, token,
+  const postAtt = await POST(`${API}/attendance`, token,
     { classId: 1, date: '2025-07-01', records: [] });
   assertStatus('POST /attendance → 403 (not allowed)', postAtt, 403);
 }
