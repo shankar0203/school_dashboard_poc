@@ -85,7 +85,7 @@ export const config = {
   // ACADEMICS  (shared lists used across every role/screen)
   // -------------------------------------------------------------------------
   academics: {
-    classes: ["6-A","6-B","7-A","7-B","8-A","8-B","9-A","9-B","10-A","10-B","11-A","12-A"],
+    classes: ["6-A","6-B","6-C","7-A","7-B","7-C","8-A","8-B","8-C","9-A","9-B","9-C","10-A","10-B","10-C"],
     subjects: ["Tamil","English","Maths","Science","Social"],
     exams: [
       { id: "mt1", name: "Mid Term 1" },
