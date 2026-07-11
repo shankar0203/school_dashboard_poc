@@ -39,7 +39,7 @@ const subjectColor = (name) => SUBJECT_COLORS[name] || "#9b7bff";
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 function Dashboard() {
-  const { setView } = useApp();
+  const { setView, meData } = useApp();
   const SID = useSID();
   const today    = getLocalDateStr();
   const todayDay = DAY_NAMES[new Date().getDay()];
@@ -74,8 +74,8 @@ function Dashboard() {
   const feeDue = f.total - f.paid;
 
   // Today's timetable (from DB)
-  const CLASS_ID_VAL = config.academics.classes.indexOf("8-A") + 1;
-  const ttData       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), []);
+  const CLASS_ID_VAL = meData?.classId || (config.academics.classes.indexOf("8-A") + 1);
+  const ttData       = useApi(() => api.getTimetableDB(CLASS_ID_VAL), [CLASS_ID_VAL]);
   const ttSchedule   = ttData.data || [];
   const todayRow     = ttSchedule.find((r) => r.day === todayDay);
   const todayPeriods = todayRow ? todayRow.subjects : [];
@@ -99,9 +99,11 @@ function Dashboard() {
       }}>
         <div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 3 }}>{getLocalDateLabel()}</div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>👋 Hi, Aarav!</div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>👋 Hi, {meData?.name?.split(" ")[0] || "there"}!</div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
-            Class 8-A · Roll 12 · {config.school.name}
+            {meData?.className ? `Class ${meData.className}` : ""}
+            {meData?.roll ? ` · Roll ${meData.roll}` : ""}
+            {` · ${config.school.name}`}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>

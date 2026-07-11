@@ -12,9 +12,9 @@ function useChildContext() {
   const { meData } = useApp();
   return {
     SID:        meData?.studentId  || api.DEMO_STUDENT_ID,
-    CHILD_NAME: meData?.childName  || "Aarav Anand",
-    CHILD_CLS:  meData?.className  || "8-A",
-    CHILD_ROLL: meData?.roll       || "12",
+    CHILD_NAME: meData?.childName  || meData?.name || "Student",
+    CHILD_CLS:  meData?.className  || "",
+    CHILD_ROLL: meData?.roll       || "",
     CLASS_ID:   meData?.classId    || (config.academics.classes.indexOf("8-A") + 1),
   };
 }
